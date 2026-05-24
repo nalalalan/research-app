@@ -215,6 +215,18 @@ def _entry_public_view(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _entry_summary_view(entry: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "created_at": entry.get("created_at"),
+        "day": entry.get("day") or _day_key(entry.get("created_at")),
+        "category": entry.get("category"),
+        "status": entry.get("status"),
+        "minutes": entry.get("minutes"),
+        "has_artifact": bool(entry.get("artifact_url")),
+        "has_next_step": bool(entry.get("next_step")),
+    }
+
+
 def _sort_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(entries, key=lambda item: item.get("created_at") or "", reverse=True)
 
@@ -244,7 +256,7 @@ def _category_summary(entries: list[dict[str, Any]], category: str) -> dict[str,
         "count": len(subset),
         "today_count": len([item for item in subset if (item.get("day") or _day_key(item.get("created_at"))) == today]),
         "minutes": sum(int(item.get("minutes") or 0) for item in subset),
-        "latest": _entry_public_view(latest) if latest else None,
+        "latest": _entry_summary_view(latest) if latest else None,
     }
 
 
@@ -261,7 +273,7 @@ def _summary(state: dict[str, Any]) -> dict[str, Any]:
         "streak_days": _streak_days(entries),
         "minutes": sum(int(item.get("minutes") or 0) for item in entries),
         "categories": {key: _category_summary(entries, key) for key in CATEGORIES},
-        "latest": _entry_public_view(latest) if latest else None,
+        "latest": _entry_summary_view(latest) if latest else None,
         "source": {
             "raw_table": "password_gated",
             "public_summary": "category_counts_latest_entries",
@@ -363,4 +375,3 @@ async def static_asset(asset_path: str) -> FileResponse:
     if path.exists() and path.is_file() and path.suffix.lower() in allowed_suffixes:
         return FileResponse(path)
     raise HTTPException(status_code=404, detail="not found")
-
