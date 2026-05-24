@@ -8,7 +8,7 @@
   <link rel="canonical" href="https://research.aolabs.io/">
   <link rel="icon" href="/favicon.svg?v=20260524-research-logbook" type="image/svg+xml">
   <link rel="stylesheet" href="https://aolabs.io/suite-header.css?v=20260516-suite-bloom">
-  <link rel="stylesheet" href="/styles.css?v=20260524-research">
+  <link rel="stylesheet" href="/styles.css?v=20260524-table">
 </head>
 <body>
   <header class="suite-topbar" aria-label="research navigation">
@@ -28,76 +28,119 @@
   </header>
 
   <main class="shell">
-    <section class="topline" aria-label="Research state">
+    <section class="ledger-head" aria-label="Research state">
       <div>
-        <p class="kicker">Daily ledger</p>
         <h1>research</h1>
         <p id="summary-line" class="summary-line">Loading current state.</p>
       </div>
-      <dl class="state-grid" aria-label="Current counts">
-        <div>
-          <dt>Today</dt>
-          <dd id="today-count">0</dd>
-        </div>
-        <div>
-          <dt>Streak</dt>
-          <dd id="streak-days">0</dd>
-        </div>
-        <div>
-          <dt>Total</dt>
-          <dd id="entry-count">0</dd>
-        </div>
-      </dl>
+      <span id="updated-at" class="updated-at">loading</span>
     </section>
 
-    <section class="entry-panel" aria-label="New entry">
-      <form id="entry-form" class="entry-form">
-        <select id="category" name="category" aria-label="category" required>
-          <option value="imagineer">imagineer</option>
-          <option value="fluxcell">fluxcell</option>
-          <option value="sarrus">sarrus</option>
-        </select>
-        <select id="status" name="status" aria-label="status">
-          <option value="moved">moved</option>
-          <option value="planned">planned</option>
-          <option value="blocked">blocked</option>
-          <option value="done">done</option>
-        </select>
-        <input id="minutes" name="minutes" type="number" min="0" max="1440" inputmode="numeric" placeholder="minutes" aria-label="minutes">
-        <textarea id="work" name="work" rows="3" placeholder="what moved" aria-label="what moved" required></textarea>
-        <input id="artifact" name="artifact" type="url" placeholder="artifact link" aria-label="artifact link">
-        <input id="next-step" name="next-step" type="text" placeholder="next tiny step" aria-label="next tiny step">
-        <div class="form-actions">
-          <span id="form-status" class="form-status" aria-live="polite"></span>
-          <button id="save-entry" type="submit">Save</button>
+    <section class="analysis-panel" aria-label="Analysis">
+      <dl class="analysis-grid">
+        <div>
+          <dt>today</dt>
+          <dd id="today-count">0</dd>
+          <span id="today-minutes">0 minutes</span>
+        </div>
+        <div>
+          <dt>streak</dt>
+          <dd id="streak-days">0</dd>
+          <span>days</span>
+        </div>
+        <div>
+          <dt>total</dt>
+          <dd id="entry-count">0</dd>
+          <span id="total-minutes">0 minutes</span>
+        </div>
+        <div>
+          <dt>open steps</dt>
+          <dd id="open-steps">0</dd>
+          <span id="latest-status">no entries</span>
+        </div>
+      </dl>
+      <div class="category-analysis" aria-label="Category analysis">
+        <div class="category-line imagineer">
+          <span>imagineer</span>
+          <div class="category-track"><i id="bar-imagineer"></i></div>
+          <strong id="cat-imagineer">0 entries</strong>
+        </div>
+        <div class="category-line fluxcell">
+          <span>fluxcell</span>
+          <div class="category-track"><i id="bar-fluxcell"></i></div>
+          <strong id="cat-fluxcell">0 entries</strong>
+        </div>
+        <div class="category-line sarrus">
+          <span>sarrus</span>
+          <div class="category-track"><i id="bar-sarrus"></i></div>
+          <strong id="cat-sarrus">0 entries</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="ledger-panel" aria-label="Daily ledger">
+      <div class="section-head">
+        <h2>daily table</h2>
+        <span id="table-count">0 rows</span>
+      </div>
+      <form id="entry-form">
+        <div class="table-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">date</th>
+                <th scope="col">category</th>
+                <th scope="col">status</th>
+                <th scope="col">minutes</th>
+                <th scope="col">what moved</th>
+                <th scope="col">artifact</th>
+                <th scope="col">next step</th>
+                <th scope="col">action</th>
+              </tr>
+            </thead>
+            <tbody class="compose-body">
+              <tr class="compose-row">
+                <td data-label="date">new</td>
+                <td data-label="category">
+                  <select id="category" name="category" aria-label="category" required>
+                    <option value="imagineer">imagineer</option>
+                    <option value="fluxcell">fluxcell</option>
+                    <option value="sarrus">sarrus</option>
+                  </select>
+                </td>
+                <td data-label="status">
+                  <select id="status" name="status" aria-label="status">
+                    <option value="moved">moved</option>
+                    <option value="planned">planned</option>
+                    <option value="blocked">blocked</option>
+                    <option value="done">done</option>
+                  </select>
+                </td>
+                <td data-label="minutes">
+                  <input id="minutes" name="minutes" type="number" min="0" max="1440" inputmode="numeric" placeholder="0" aria-label="minutes">
+                </td>
+                <td data-label="what moved">
+                  <input id="work" name="work" type="text" placeholder="what moved" aria-label="what moved" required>
+                </td>
+                <td data-label="artifact">
+                  <input id="artifact" name="artifact" type="url" placeholder="link" aria-label="artifact link">
+                </td>
+                <td data-label="next step">
+                  <input id="next-step" name="next-step" type="text" placeholder="next step" aria-label="next step">
+                </td>
+                <td data-label="action" class="action-cell">
+                  <button id="save-entry" type="submit">Add</button>
+                  <span id="form-status" class="form-status" aria-live="polite"></span>
+                </td>
+              </tr>
+            </tbody>
+            <tbody id="entry-table"></tbody>
+          </table>
         </div>
       </form>
     </section>
-
-    <section class="category-strip" aria-label="Category totals">
-      <article class="category-item imagineer">
-        <strong>imagineer</strong>
-        <span id="cat-imagineer">0 entries</span>
-      </article>
-      <article class="category-item fluxcell">
-        <strong>fluxcell</strong>
-        <span id="cat-fluxcell">0 entries</span>
-      </article>
-      <article class="category-item sarrus">
-        <strong>sarrus</strong>
-        <span id="cat-sarrus">0 entries</span>
-      </article>
-    </section>
-
-    <section class="table-panel" aria-label="Entries">
-      <div class="section-head">
-        <h2>Entries</h2>
-        <span id="updated-at">loading</span>
-      </div>
-      <div id="entry-table" class="entry-table"></div>
-    </section>
   </main>
 
-  <script src="/app.js?v=20260524-research"></script>
+  <script src="/app.js?v=20260524-table"></script>
 </body>
 </html>

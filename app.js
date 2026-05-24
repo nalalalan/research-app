@@ -1,3 +1,5 @@
+const CATEGORIES = ["imagineer", "fluxcell", "sarrus"];
+
 const state = {
   entries: [],
   summary: null,
@@ -14,16 +16,26 @@ const els = {
   formStatus: document.getElementById("form-status"),
   save: document.getElementById("save-entry"),
   table: document.getElementById("entry-table"),
+  tableCount: document.getElementById("table-count"),
   summaryLine: document.getElementById("summary-line"),
   todayCount: document.getElementById("today-count"),
+  todayMinutes: document.getElementById("today-minutes"),
   streakDays: document.getElementById("streak-days"),
   entryCount: document.getElementById("entry-count"),
+  totalMinutes: document.getElementById("total-minutes"),
+  openSteps: document.getElementById("open-steps"),
+  latestStatus: document.getElementById("latest-status"),
   updatedAt: document.getElementById("updated-at"),
   logout: document.getElementById("logout"),
   categories: {
     imagineer: document.getElementById("cat-imagineer"),
     fluxcell: document.getElementById("cat-fluxcell"),
     sarrus: document.getElementById("cat-sarrus"),
+  },
+  bars: {
+    imagineer: document.getElementById("bar-imagineer"),
+    fluxcell: document.getElementById("bar-fluxcell"),
+    sarrus: document.getElementById("bar-sarrus"),
   },
 };
 
@@ -44,6 +56,11 @@ function plural(value, word) {
   return `${value} ${word}${value === 1 ? "" : "s"}`;
 }
 
+function formatMinutes(value) {
+  const minutes = Number(value || 0);
+  return `${minutes} min`;
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replaceAll("&", "&amp;")
@@ -54,55 +71,84 @@ function escapeHtml(value) {
 
 function linkHtml(value) {
   const text = String(value || "").trim();
-  if (!text) return "";
+  if (!text) return `<span class="muted">-</span>`;
   if (!/^https?:\/\//i.test(text)) return escapeHtml(text);
   let label = text.replace(/^https?:\/\//i, "").replace(/\/$/, "");
-  if (label.length > 46) label = `${label.slice(0, 43)}...`;
+  if (label.length > 34) label = `${label.slice(0, 31)}...`;
   return `<a href="${escapeHtml(text)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`;
 }
 
-function renderSummary() {
+function entryDay(entry) {
+  return entry.day || "";
+}
+
+function sumMinutes(entries) {
+  return entries.reduce((total, entry) => total + Number(entry.minutes || 0), 0);
+}
+
+function renderAnalysis() {
   const summary = state.summary || {};
-  els.todayCount.textContent = summary.today_count ?? 0;
+  const entries = state.entries || [];
+  const latest = entries[0] || summary.latest;
+  const today = summary.today;
+  const todayEntries = entries.filter((entry) => entryDay(entry) === today);
+  const totalMinutes = summary.minutes ?? sumMinutes(entries);
+  const openSteps = entries.filter((entry) => String(entry.next_step || "").trim()).length;
+  const maxCategoryCount = Math.max(1, ...CATEGORIES.map((key) => summary.categories?.[key]?.count || 0));
+
+  els.todayCount.textContent = summary.today_count ?? todayEntries.length;
+  els.todayMinutes.textContent = formatMinutes(sumMinutes(todayEntries));
   els.streakDays.textContent = summary.streak_days ?? 0;
-  els.entryCount.textContent = summary.entry_count ?? 0;
+  els.entryCount.textContent = summary.entry_count ?? entries.length;
+  els.totalMinutes.textContent = formatMinutes(totalMinutes);
+  els.openSteps.textContent = openSteps;
+  els.tableCount.textContent = plural(entries.length, "row");
   els.updatedAt.textContent = summary.updated_at ? `updated ${formatDate(summary.updated_at)}` : "not updated";
 
-  const latest = summary.latest;
   if (latest) {
-    els.summaryLine.textContent = `${latest.category} ${latest.status || "moved"} ${formatDate(latest.created_at)}`;
+    els.summaryLine.textContent = `${latest.category} ${latest.status || "moved"} at ${formatDate(latest.created_at)}`;
+    els.latestStatus.textContent = `${latest.category} ${latest.status || "moved"}`;
   } else {
-    els.summaryLine.textContent = "No entries yet.";
+    els.summaryLine.textContent = "No rows yet.";
+    els.latestStatus.textContent = "no entries";
   }
 
-  for (const key of Object.keys(els.categories)) {
+  for (const key of CATEGORIES) {
     const item = summary.categories?.[key] || {};
-    const latestItem = item.latest;
-    els.categories[key].textContent = latestItem
-      ? `${plural(item.count || 0, "entry")} · latest ${formatDate(latestItem.created_at)}`
-      : "0 entries";
+    const count = item.count || 0;
+    const minutes = item.minutes || 0;
+    const todayCount = item.today_count || 0;
+    els.categories[key].textContent = `${plural(count, "entry")} / ${formatMinutes(minutes)} / ${todayCount} today`;
+    els.bars[key].style.width = `${Math.round((count / maxCategoryCount) * 100)}%`;
   }
 }
 
 function renderEntries() {
   if (!state.entries.length) {
-    els.table.innerHTML = `<div class="empty-row">No entries yet.</div>`;
+    els.table.innerHTML = `
+      <tr class="empty-row">
+        <td colspan="8">No rows yet.</td>
+      </tr>
+    `;
     return;
   }
+
   els.table.innerHTML = state.entries.map((entry) => `
-    <article class="entry-row ${escapeHtml(entry.category)}">
-      <div class="entry-time">
+    <tr class="entry-row ${escapeHtml(entry.category)}">
+      <td data-label="date">
         <strong>${formatDate(entry.created_at)}</strong>
-        <span>${escapeHtml(entry.category)} · ${escapeHtml(entry.status || "moved")}</span>
-      </div>
-      <div class="entry-work">${escapeHtml(entry.work)}</div>
-      <div class="entry-artifact">${linkHtml(entry.artifact_url)}</div>
-      <div class="entry-next">${escapeHtml(entry.next_step || "")}</div>
-      <div class="entry-meta">
-        <span>${entry.minutes ? `${entry.minutes}m` : ""}</span>
-        <button type="button" data-delete="${escapeHtml(entry.id)}" aria-label="delete entry">delete</button>
-      </div>
-    </article>
+        <span>${escapeHtml(entry.day || "")}</span>
+      </td>
+      <td data-label="category"><span class="category-pill">${escapeHtml(entry.category)}</span></td>
+      <td data-label="status">${escapeHtml(entry.status || "moved")}</td>
+      <td data-label="minutes">${entry.minutes ? formatMinutes(entry.minutes) : `<span class="muted">-</span>`}</td>
+      <td data-label="what moved" class="work-cell">${escapeHtml(entry.work)}</td>
+      <td data-label="artifact" class="artifact-cell">${linkHtml(entry.artifact_url)}</td>
+      <td data-label="next step">${escapeHtml(entry.next_step || "") || `<span class="muted">-</span>`}</td>
+      <td data-label="action" class="action-cell">
+        <button type="button" data-delete="${escapeHtml(entry.id)}" aria-label="delete row">delete</button>
+      </td>
+    </tr>
   `).join("");
 }
 
@@ -116,7 +162,7 @@ async function loadEntries() {
   const payload = await response.json();
   state.entries = payload.entries || [];
   state.summary = payload.summary || null;
-  renderSummary();
+  renderAnalysis();
   renderEntries();
 }
 
@@ -142,8 +188,6 @@ async function saveEntry(event) {
       const payload = await response.json().catch(() => ({}));
       throw new Error(payload.detail || "save failed");
     }
-    const payload = await response.json();
-    state.summary = payload.summary || null;
     els.form.reset();
     els.category.value = "imagineer";
     els.status.value = "moved";
@@ -162,6 +206,7 @@ async function deleteEntry(id) {
   });
   if (!response.ok) throw new Error("delete failed");
   await loadEntries();
+  els.formStatus.textContent = "";
 }
 
 els.form.addEventListener("submit", saveEntry);
@@ -183,4 +228,3 @@ els.logout.addEventListener("click", async () => {
 loadEntries().catch(() => {
   els.summaryLine.textContent = "Load failed.";
 });
-
