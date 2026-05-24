@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>research.aolabs.io</title>
+  <meta name="description" content="Password-gated daily research ledger.">
+  <link rel="icon" href="/favicon.svg?v=20260524-research" type="image/svg+xml">
+  <link rel="stylesheet" href="https://aolabs.io/suite-header.css?v=20260516-suite-bloom">
+  <link rel="stylesheet" href="/styles.css?v=20260524-research">
+</head>
+<body class="locked">
+  <header class="suite-topbar" aria-label="research navigation">
+    <div class="suite-brand-cluster">
+      <a class="suite-ao-home" href="https://aolabs.io/" aria-label="aolabs.io">
+        <img src="https://aolabs.io/marks/ao-ink.svg?v=20260516-suite-bloom" alt="">
+      </a>
+      <a class="suite-app-brand" href="/" aria-label="research home">
+        <img class="suite-app-mark" src="/favicon.svg?v=20260524-research" alt="">
+        <span class="suite-app-name">research.aolabs.io</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="gate-shell">
+    <section class="gate-panel" aria-label="Unlock research">
+      <h1>research</h1>
+      <p>Daily ledger locked.</p>
+      <form id="gate-form" class="gate-form">
+        <input id="password" name="password" type="password" inputmode="numeric" autocomplete="current-password" placeholder="password" aria-label="password" required>
+        <label class="remember-line">
+          <input id="remember" type="checkbox" checked>
+          <span>remember this device</span>
+        </label>
+        <button type="submit">Open</button>
+        <span id="gate-status" class="form-status" aria-live="polite"></span>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById("gate-form");
+    const status = document.getElementById("gate-status");
+    const password = document.getElementById("password");
+    const remember = document.getElementById("remember");
+    password.focus();
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      status.textContent = "checking";
+      try {
+        const response = await fetch("/api/auth", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: password.value, remember: remember.checked })
+        });
+        if (!response.ok) {
+          status.textContent = "wrong password";
+          return;
+        }
+        window.location.reload();
+      } catch (error) {
+        status.textContent = "unlock failed";
+      }
+    });
+  </script>
+</body>
+</html>

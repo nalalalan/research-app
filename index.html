@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>research.aolabs.io</title>
+  <meta name="description" content="Daily research ledger for Imagineer, FluxCell, and Sarrus work.">
+  <link rel="canonical" href="https://research.aolabs.io/">
+  <link rel="icon" href="/favicon.svg?v=20260524-research" type="image/svg+xml">
+  <link rel="stylesheet" href="https://aolabs.io/suite-header.css?v=20260516-suite-bloom">
+  <link rel="stylesheet" href="/styles.css?v=20260524-research">
+</head>
+<body>
+  <header class="suite-topbar" aria-label="research navigation">
+    <div class="suite-brand-cluster">
+      <a class="suite-ao-home" href="https://aolabs.io/" aria-label="aolabs.io">
+        <img src="https://aolabs.io/marks/ao-ink.svg?v=20260516-suite-bloom" alt="">
+      </a>
+      <a class="suite-app-brand" href="/" aria-label="research home">
+        <img class="suite-app-mark" src="/favicon.svg?v=20260524-research" alt="">
+        <span class="suite-app-name">research.aolabs.io</span>
+      </a>
+    </div>
+    <nav class="suite-topbar-actions" aria-label="research actions">
+      <a href="/api/research/summary">json</a>
+      <button id="logout" type="button">lock</button>
+    </nav>
+  </header>
+
+  <main class="shell">
+    <section class="topline" aria-label="Research state">
+      <div>
+        <p class="kicker">Daily ledger</p>
+        <h1>research</h1>
+        <p id="summary-line" class="summary-line">Loading current state.</p>
+      </div>
+      <dl class="state-grid" aria-label="Current counts">
+        <div>
+          <dt>Today</dt>
+          <dd id="today-count">0</dd>
+        </div>
+        <div>
+          <dt>Streak</dt>
+          <dd id="streak-days">0</dd>
+        </div>
+        <div>
+          <dt>Total</dt>
+          <dd id="entry-count">0</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="entry-panel" aria-label="New entry">
+      <form id="entry-form" class="entry-form">
+        <select id="category" name="category" aria-label="category" required>
+          <option value="imagineer">imagineer</option>
+          <option value="fluxcell">fluxcell</option>
+          <option value="sarrus">sarrus</option>
+        </select>
+        <select id="status" name="status" aria-label="status">
+          <option value="moved">moved</option>
+          <option value="planned">planned</option>
+          <option value="blocked">blocked</option>
+          <option value="done">done</option>
+        </select>
+        <input id="minutes" name="minutes" type="number" min="0" max="1440" inputmode="numeric" placeholder="minutes" aria-label="minutes">
+        <textarea id="work" name="work" rows="3" placeholder="what moved" aria-label="what moved" required></textarea>
+        <input id="artifact" name="artifact" type="url" placeholder="artifact link" aria-label="artifact link">
+        <input id="next-step" name="next-step" type="text" placeholder="next tiny step" aria-label="next tiny step">
+        <div class="form-actions">
+          <span id="form-status" class="form-status" aria-live="polite"></span>
+          <button id="save-entry" type="submit">Save</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="category-strip" aria-label="Category totals">
+      <article class="category-item imagineer">
+        <strong>imagineer</strong>
+        <span id="cat-imagineer">0 entries</span>
+      </article>
+      <article class="category-item fluxcell">
+        <strong>fluxcell</strong>
+        <span id="cat-fluxcell">0 entries</span>
+      </article>
+      <article class="category-item sarrus">
+        <strong>sarrus</strong>
+        <span id="cat-sarrus">0 entries</span>
+      </article>
+    </section>
+
+    <section class="table-panel" aria-label="Entries">
+      <div class="section-head">
+        <h2>Entries</h2>
+        <span id="updated-at">loading</span>
+      </div>
+      <div id="entry-table" class="entry-table"></div>
+    </section>
+  </main>
+
+  <script src="/app.js?v=20260524-research"></script>
+</body>
+</html>
