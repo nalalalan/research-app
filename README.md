@@ -1,13 +1,19 @@
-# research/todo app removed
+# todo.aolabs.io
 
-This app was shut down on May 25, 2026 after Alan decided the Todo/Research list would create maintenance pressure instead of relief.
+Password-gated two-column todo table.
 
-Current state:
+Shape:
 
-- no running Railway project
-- no AO Labs hub tile
-- no `/todo/` or `/research/` fallback route
-- no Progress source definitions
-- no runnable app source in this repo
+- one row per item
+- `item` column for the name
+- `status` column with a fixed-height scroll window that stays at the newest text while typing
 
-The remaining `research.aolabs.io` DNS record is external cleanup state. It still points at Railway edge, but the app service and project have been deleted.
+Runtime:
+
+- `GET /` serves the gated app.
+- `POST /api/auth` checks `TODO_PASSWORD`, default `031120`, and sets a remembered-device cookie.
+- `GET /api/todo/items` returns the raw list for authenticated users.
+- `POST /api/todo/items` adds an item.
+- `PATCH /api/todo/items/{item_id}` edits item name or status.
+- `DELETE /api/todo/items/{item_id}` removes an item.
+- `GET /api/todo/summary` is public-safe JSON for Progress.

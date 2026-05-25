@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>todo.aolabs.io</title>
+  <link rel="icon" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="suite-link" href="https://aolabs.io" aria-label="AO Labs">
+      <span class="suite-mark" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+      </span>
+    </a>
+    <img class="app-icon" src="/favicon.svg" alt="">
+    <h1>todo</h1>
+  </header>
+
+  <main class="shell">
+    <form id="add-form" class="add-row">
+      <input id="new-item" type="text" autocomplete="off" placeholder="new item">
+      <button type="submit" aria-label="add item">+</button>
+    </form>
+
+    <section class="table-shell" aria-label="todo table">
+      <table>
+        <thead>
+          <tr>
+            <th>item</th>
+            <th>status</th>
+          </tr>
+        </thead>
+        <tbody id="items"></tbody>
+      </table>
+      <div id="empty" class="empty" hidden>No items.</div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
