@@ -446,6 +446,13 @@ tr:focus-within .item-actions,
   background: var(--surface-soft);
 }
 
+.loading-row td {
+  height: 38px;
+  color: var(--soft);
+  font-size: 13px;
+  font-weight: 620;
+}
+
 .todo-row.is-dragging td {
   opacity: 0.42;
 }
