@@ -115,9 +115,7 @@ function buildNewRowButton() {
 
   const itemCell = document.createElement("td");
   itemCell.className = "new-row-cell item-cell";
-
-  const statusCell = document.createElement("td");
-  statusCell.className = "new-row-status-cell status-cell";
+  itemCell.colSpan = 2;
 
   const button = document.createElement("button");
   button.className = "new-row-button";
@@ -139,7 +137,7 @@ function buildNewRowButton() {
   });
 
   itemCell.append(button);
-  tr.append(itemCell, statusCell);
+  tr.append(itemCell);
   return tr;
 }
 

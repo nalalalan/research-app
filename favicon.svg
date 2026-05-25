@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <rect width="128" height="128" rx="28" fill="#fff8ef"/>
-  <rect x="18" y="20" width="92" height="88" rx="12" fill="#f6eadc" stroke="#cbbdaf" stroke-width="5"/>
-  <path d="M18 48h92M50 20v88" fill="none" stroke="#cbbdaf" stroke-width="5"/>
-  <rect x="29" y="62" width="13" height="13" rx="3" fill="#6f8276"/>
-  <path d="M58 67h38M58 83h30" fill="none" stroke="#211f1d" stroke-width="7" stroke-linecap="round"/>
-  <rect x="29" y="82" width="13" height="13" rx="3" fill="#d79a75"/>
+  <rect width="128" height="128" rx="26" fill="#fbfaf6"/>
+  <rect x="18" y="20" width="92" height="88" rx="15" fill="#fffefb" stroke="#c7c1b7" stroke-width="3"/>
+  <path d="M18 48h92M48 20v88" fill="none" stroke="#d8d2c9" stroke-width="3"/>
+  <rect x="29" y="59" width="10" height="10" rx="3" fill="#3e7187"/>
+  <rect x="29" y="79" width="10" height="10" rx="3" fill="#6ebaa6"/>
+  <path d="M58 63h35M58 83h29" fill="none" stroke="#242321" stroke-width="5" stroke-linecap="round"/>
+  <path d="M58 72h24M58 92h38" fill="none" stroke="#9b968d" stroke-width="3" stroke-linecap="round"/>
 </svg>
