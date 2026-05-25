@@ -1,5 +1,7 @@
 # todo.aolabs.io
 
+Archived May 25, 2026. The Railway deployment is stopped while the project, source, and persistent volume are preserved for a possible later restore.
+
 Password-gated two-column todo table.
 
 Shape:
