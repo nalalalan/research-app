@@ -32,15 +32,15 @@ textarea {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   max-width: 1180px;
   margin: 0 auto;
-  padding: 24px 20px 10px;
+  padding: 18px 20px 6px;
 }
 
 .topbar h1 {
   margin: 0;
-  font-size: clamp(2.1rem, 8vw, 4.5rem);
+  font-size: clamp(1.9rem, 5.8vw, 3.35rem);
   line-height: 0.95;
   letter-spacing: 0;
 }
@@ -55,8 +55,8 @@ textarea {
   grid-template-columns: repeat(2, 12px);
   grid-template-rows: repeat(2, 12px);
   gap: 5px;
-  width: 54px;
-  height: 54px;
+  width: 46px;
+  height: 46px;
   place-content: center;
   border-radius: 50%;
   background: #fbefe0;
@@ -73,14 +73,14 @@ textarea {
 .suite-mark span:nth-child(4) { background: #df8577; }
 
 .app-icon {
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
 }
 
 .shell {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 14px 20px 46px;
+  padding: 10px 20px 42px;
 }
 
 .item-input:focus,
@@ -121,9 +121,9 @@ td {
 }
 
 th {
-  padding: 14px 16px;
+  padding: 9px 14px;
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.78rem;
   text-align: left;
   text-transform: lowercase;
 }
@@ -135,7 +135,7 @@ td:first-child {
 }
 
 td {
-  padding: 12px;
+  padding: 8px 10px;
 }
 
 tr:last-child td {
@@ -148,35 +148,35 @@ tr:last-child td {
 
 .item-wrap {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 7px;
 }
 
 .item-input {
   width: 100%;
-  min-height: 48px;
+  min-height: 38px;
   border: 1px solid transparent;
   border-radius: 7px;
   background: #fbf7ef;
   color: var(--ink);
-  padding: 0 12px;
+  padding: 0 10px;
   outline: none;
   font-weight: 750;
 }
 
 .delete {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   align-self: start;
   background: #efe3d9;
   color: var(--muted);
 }
 
 .add-item {
-  width: 36px;
-  height: 48px;
+  width: 32px;
+  height: 38px;
   align-self: start;
-  font-size: 1.25rem;
+  font-size: 1.1rem;
 }
 
 .delete:hover {
@@ -201,17 +201,17 @@ tr:last-child td {
 .status-window {
   display: block;
   width: 100%;
-  height: 210px;
-  min-height: 210px;
-  max-height: 210px;
+  height: 132px;
+  min-height: 132px;
+  max-height: 132px;
   resize: none;
   overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fffaf3;
   color: var(--ink);
-  padding: 14px 15px;
-  line-height: 1.48;
+  padding: 10px 12px;
+  line-height: 1.42;
   outline: none;
   white-space: pre-wrap;
 }
@@ -289,19 +289,19 @@ tr:last-child td {
 
 @media (max-width: 720px) {
   .topbar {
-    padding-top: 18px;
+    padding-top: 14px;
   }
 
   .suite-mark {
-    width: 46px;
-    height: 46px;
+    width: 40px;
+    height: 40px;
     grid-template-columns: repeat(2, 10px);
     grid-template-rows: repeat(2, 10px);
   }
 
   .app-icon {
-    width: 38px;
-    height: 38px;
+    width: 34px;
+    height: 34px;
   }
 
   .shell {
@@ -318,32 +318,32 @@ tr:last-child td {
   }
 
   td {
-    padding: 10px;
+    padding: 7px;
   }
 
   .item-wrap {
-    grid-template-columns: minmax(0, 1fr) 34px;
-    gap: 7px;
+    grid-template-columns: minmax(0, 1fr) 30px;
+    gap: 6px;
   }
 
   .item-input {
-    min-height: 46px;
-    padding-inline: 10px;
+    min-height: 36px;
+    padding-inline: 9px;
   }
 
   .delete {
-    width: 34px;
-    height: 34px;
+    width: 30px;
+    height: 30px;
   }
 
   .add-item {
-    width: 34px;
-    height: 46px;
+    width: 30px;
+    height: 36px;
   }
 
   .status-window {
-    height: 190px;
-    min-height: 190px;
-    max-height: 190px;
+    height: 122px;
+    min-height: 122px;
+    max-height: 122px;
   }
 }

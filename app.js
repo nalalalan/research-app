@@ -41,7 +41,7 @@ async function createItem(row) {
   if (!response.ok) return;
   const payload = await response.json();
   items.push(payload.item);
-  render(payload.item.id);
+  render({ focusNew: true });
 }
 
 function buildNewRow() {
@@ -152,10 +152,10 @@ function buildRow(item) {
   return tr;
 }
 
-function render(focusItemId) {
-  itemsEl.replaceChildren(buildNewRow(), ...items.map(buildRow));
-  if (focusItemId) {
-    itemsEl.querySelector(`tr[data-id="${focusItemId}"] .status-window`)?.focus();
+function render(options = {}) {
+  itemsEl.replaceChildren(...items.map(buildRow), buildNewRow());
+  if (options.focusNew) {
+    itemsEl.querySelector(".new-item-input")?.focus();
   }
 }
 
