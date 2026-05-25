@@ -2,6 +2,16 @@ const itemsEl = document.querySelector("#items");
 const saveTimers = new Map();
 
 let items = [];
+let draftOpen = false;
+let openMenuId = "";
+let confirmDeleteId = "";
+
+document.addEventListener("click", (event) => {
+  if (!openMenuId || event.target.closest(".item-actions")) return;
+  openMenuId = "";
+  confirmDeleteId = "";
+  render();
+});
 
 function scrollStatusToBottom(textarea) {
   requestAnimationFrame(() => {
@@ -41,7 +51,8 @@ async function createItem(row) {
   if (!response.ok) return;
   const payload = await response.json();
   items.push(payload.item);
-  render({ focusNew: true });
+  draftOpen = false;
+  render({ focusNewButton: true });
 }
 
 function buildNewRow() {
@@ -98,6 +109,37 @@ function buildNewRow() {
   return tr;
 }
 
+function buildNewRowButton() {
+  const tr = document.createElement("tr");
+  tr.className = "new-row-button-row";
+
+  const cell = document.createElement("td");
+  cell.colSpan = 2;
+
+  const button = document.createElement("button");
+  button.className = "new-row-button";
+  button.type = "button";
+  button.setAttribute("aria-label", "new row");
+
+  const plus = document.createElement("span");
+  plus.className = "new-row-plus";
+  plus.textContent = "+";
+  plus.setAttribute("aria-hidden", "true");
+
+  const label = document.createElement("span");
+  label.textContent = "New row";
+
+  button.append(plus, label);
+  button.addEventListener("click", () => {
+    draftOpen = true;
+    render({ focusNew: true });
+  });
+
+  cell.append(button);
+  tr.append(cell);
+  return tr;
+}
+
 function buildRow(item) {
   const tr = document.createElement("tr");
   tr.dataset.id = item.id;
@@ -116,20 +158,9 @@ function buildRow(item) {
     scheduleSave(item.id, { item: nameInput.value });
   });
 
-  const deleteButton = document.createElement("button");
-  deleteButton.className = "delete";
-  deleteButton.type = "button";
-  deleteButton.setAttribute("aria-label", "delete item");
-  deleteButton.textContent = "x";
-  deleteButton.addEventListener("click", async () => {
-    const response = await fetch(`/api/todo/items/${item.id}`, { method: "DELETE" });
-    if (response.ok) {
-      items = items.filter((entry) => entry.id !== item.id);
-      render();
-    }
-  });
+  const actionWrap = buildActions(item);
 
-  itemWrap.append(nameInput, deleteButton);
+  itemWrap.append(nameInput, actionWrap);
   itemCell.append(itemWrap);
 
   const statusCell = document.createElement("td");
@@ -152,10 +183,95 @@ function buildRow(item) {
   return tr;
 }
 
+function buildActions(item) {
+  const actionWrap = document.createElement("div");
+  actionWrap.className = "item-actions";
+
+  const menuButton = document.createElement("button");
+  menuButton.className = "menu-button";
+  menuButton.type = "button";
+  menuButton.setAttribute("aria-label", "row actions");
+  menuButton.setAttribute("aria-expanded", String(openMenuId === item.id));
+
+  const dotStack = document.createElement("span");
+  dotStack.className = "dot-stack";
+  dotStack.setAttribute("aria-hidden", "true");
+  dotStack.append(document.createElement("span"), document.createElement("span"), document.createElement("span"));
+  menuButton.append(dotStack);
+  menuButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const shouldOpen = openMenuId !== item.id;
+    openMenuId = shouldOpen ? item.id : "";
+    confirmDeleteId = "";
+    render();
+  });
+
+  actionWrap.append(menuButton);
+
+  if (openMenuId !== item.id) return actionWrap;
+
+  const menu = document.createElement("div");
+  menu.className = "row-menu";
+  menu.addEventListener("click", (event) => event.stopPropagation());
+
+  if (confirmDeleteId === item.id) {
+    const message = document.createElement("p");
+    message.className = "confirm-text";
+    message.textContent = "Are you sure you want to delete?";
+
+    const confirmActions = document.createElement("div");
+    confirmActions.className = "confirm-actions";
+
+    const cancelButton = document.createElement("button");
+    cancelButton.className = "cancel-delete";
+    cancelButton.type = "button";
+    cancelButton.textContent = "Cancel";
+    cancelButton.addEventListener("click", () => {
+      confirmDeleteId = "";
+      render();
+    });
+
+    const confirmButton = document.createElement("button");
+    confirmButton.className = "confirm-delete";
+    confirmButton.type = "button";
+    confirmButton.textContent = "Delete";
+    confirmButton.addEventListener("click", async () => {
+      const response = await fetch(`/api/todo/items/${item.id}`, { method: "DELETE" });
+      if (response.ok) {
+        items = items.filter((entry) => entry.id !== item.id);
+        openMenuId = "";
+        confirmDeleteId = "";
+        render();
+      }
+    });
+
+    confirmActions.append(cancelButton, confirmButton);
+    menu.append(message, confirmActions);
+  } else {
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "menu-delete";
+    deleteButton.type = "button";
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", () => {
+      confirmDeleteId = item.id;
+      render();
+    });
+    menu.append(deleteButton);
+  }
+
+  actionWrap.append(menu);
+  return actionWrap;
+}
+
 function render(options = {}) {
-  itemsEl.replaceChildren(...items.map(buildRow), buildNewRow());
+  const rows = items.map(buildRow);
+  rows.push(draftOpen ? buildNewRow() : buildNewRowButton());
+  itemsEl.replaceChildren(...rows);
   if (options.focusNew) {
     itemsEl.querySelector(".new-item-input")?.focus();
+  }
+  if (options.focusNewButton) {
+    itemsEl.querySelector(".new-row-button")?.focus();
   }
 }
 
