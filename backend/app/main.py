@@ -113,6 +113,10 @@ class UpdateItemBody(BaseModel):
     status: str | None = Field(default=None, max_length=30000)
 
 
+class ReorderItemsBody(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=1000)
+
+
 app = FastAPI(title="AO Todo", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -183,6 +187,21 @@ async def create_item(body: CreateItemBody, ao_todo_device: str | None = Cookie(
     state.setdefault("items", []).append(item)
     _save_state(state)
     return {"item": _compact_item(item), "updatedAt": state["updatedAt"]}
+
+
+@app.patch("/api/todo/items/order")
+async def reorder_items(body: ReorderItemsBody, ao_todo_device: str | None = Cookie(default=None)) -> dict[str, Any]:
+    _require_auth(ao_todo_device)
+    state = _load_state()
+    items = state.get("items", [])
+    order = [str(item.get("id", "")) for item in items]
+    requested = [str(item_id) for item_id in body.ids]
+    if len(set(requested)) != len(requested) or set(requested) != set(order):
+        raise HTTPException(status_code=400, detail="order must include each item once")
+    by_id = {str(item.get("id", "")): item for item in items}
+    state["items"] = [by_id[item_id] for item_id in requested]
+    _save_state(state)
+    return {"items": [_compact_item(item) for item in state["items"]], "updatedAt": state["updatedAt"]}
 
 
 @app.patch("/api/todo/items/{item_id}")

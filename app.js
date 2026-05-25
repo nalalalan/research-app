@@ -5,6 +5,7 @@ let items = [];
 let draftOpen = false;
 let openMenuId = "";
 let confirmDeleteId = "";
+let draggedItemId = "";
 
 document.addEventListener("click", (event) => {
   if (!openMenuId || event.target.closest(".item-actions")) return;
@@ -16,6 +17,115 @@ document.addEventListener("click", (event) => {
 function scrollStatusToBottom(textarea) {
   requestAnimationFrame(() => {
     textarea.scrollTop = textarea.scrollHeight;
+  });
+}
+
+function syncStatusState(textarea) {
+  textarea.classList.toggle("is-empty", !textarea.value.trim());
+}
+
+function clearDragClasses() {
+  document.querySelectorAll(".is-dragging, .is-drop-before, .is-drop-after").forEach((row) => {
+    row.classList.remove("is-dragging", "is-drop-before", "is-drop-after");
+  });
+}
+
+function placeDropMarker(row, event) {
+  if (!draggedItemId || row.dataset.id === draggedItemId) return "before";
+  const rect = row.getBoundingClientRect();
+  const placement = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+  document.querySelectorAll(".is-drop-before, .is-drop-after").forEach((entry) => {
+    if (entry !== row) entry.classList.remove("is-drop-before", "is-drop-after");
+  });
+  row.classList.toggle("is-drop-before", placement === "before");
+  row.classList.toggle("is-drop-after", placement === "after");
+  return placement;
+}
+
+function moveItem(dragId, targetId, placement = "before") {
+  if (!dragId || !targetId || dragId === targetId) return false;
+  const fromIndex = items.findIndex((item) => item.id === dragId);
+  if (fromIndex === -1) return false;
+  const [draggedItem] = items.splice(fromIndex, 1);
+  const targetIndex = items.findIndex((item) => item.id === targetId);
+  if (targetIndex === -1) {
+    items.splice(fromIndex, 0, draggedItem);
+    return false;
+  }
+  const insertIndex = placement === "after" ? targetIndex + 1 : targetIndex;
+  items.splice(insertIndex, 0, draggedItem);
+  return true;
+}
+
+function moveItemToEnd(dragId) {
+  const fromIndex = items.findIndex((item) => item.id === dragId);
+  if (fromIndex === -1 || fromIndex === items.length - 1) return false;
+  const [draggedItem] = items.splice(fromIndex, 1);
+  items.push(draggedItem);
+  return true;
+}
+
+async function persistOrder() {
+  const response = await fetch("/api/todo/items/order", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: items.map((item) => item.id) }),
+  });
+  if (response.ok) {
+    const payload = await response.json();
+    items = payload.items || items;
+  } else {
+    await loadItems();
+  }
+}
+
+function attachDropTarget(row, itemId) {
+  row.addEventListener("dragover", (event) => {
+    if (!draggedItemId || draggedItemId === itemId) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    placeDropMarker(row, event);
+  });
+
+  row.addEventListener("dragleave", () => {
+    row.classList.remove("is-drop-before", "is-drop-after");
+  });
+
+  row.addEventListener("drop", async (event) => {
+    if (!draggedItemId || draggedItemId === itemId) return;
+    event.preventDefault();
+    const placement = placeDropMarker(row, event);
+    const moved = moveItem(draggedItemId, itemId, placement);
+    draggedItemId = "";
+    clearDragClasses();
+    if (moved) await persistOrder();
+    render();
+  });
+}
+
+function attachEndDropTarget(row) {
+  row.addEventListener("dragover", (event) => {
+    if (!draggedItemId) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    document.querySelectorAll(".is-drop-before, .is-drop-after").forEach((entry) => {
+      if (entry !== row) entry.classList.remove("is-drop-before", "is-drop-after");
+    });
+    row.classList.add("is-drop-before");
+  });
+
+  row.addEventListener("dragleave", () => {
+    row.classList.remove("is-drop-before");
+  });
+
+  row.addEventListener("drop", async (event) => {
+    if (!draggedItemId) return;
+    event.preventDefault();
+    const moved = moveItemToEnd(draggedItemId);
+    draggedItemId = "";
+    clearDragClasses();
+    if (moved) await persistOrder();
+    render();
   });
 }
 
@@ -58,12 +168,17 @@ async function createItem(row) {
 function buildNewRow() {
   const tr = document.createElement("tr");
   tr.className = "new-item-row";
+  attachEndDropTarget(tr);
 
   const itemCell = document.createElement("td");
   itemCell.className = "item-cell";
 
   const itemWrap = document.createElement("div");
   itemWrap.className = "item-wrap";
+
+  const dragSpacer = document.createElement("span");
+  dragSpacer.className = "drag-spacer";
+  dragSpacer.setAttribute("aria-hidden", "true");
 
   const itemInput = document.createElement("input");
   itemInput.className = "item-input new-item-input";
@@ -84,7 +199,7 @@ function buildNewRow() {
   addButton.textContent = "+";
   addButton.addEventListener("click", () => createItem(tr));
 
-  itemWrap.append(itemInput, addButton);
+  itemWrap.append(dragSpacer, itemInput, addButton);
   itemCell.append(itemWrap);
 
   const statusCell = document.createElement("td");
@@ -112,6 +227,7 @@ function buildNewRow() {
 function buildNewRowButton() {
   const tr = document.createElement("tr");
   tr.className = "new-row-button-row";
+  attachEndDropTarget(tr);
 
   const itemCell = document.createElement("td");
   itemCell.className = "new-row-cell item-cell";
@@ -141,15 +257,51 @@ function buildNewRowButton() {
   return tr;
 }
 
+function buildDragHandle(item, row) {
+  const handle = document.createElement("button");
+  handle.className = "drag-handle";
+  handle.type = "button";
+  handle.draggable = true;
+  handle.setAttribute("aria-label", "drag row");
+
+  const dots = document.createElement("span");
+  dots.className = "drag-dots";
+  dots.setAttribute("aria-hidden", "true");
+  for (let index = 0; index < 6; index += 1) {
+    dots.append(document.createElement("span"));
+  }
+  handle.append(dots);
+
+  handle.addEventListener("dragstart", (event) => {
+    draggedItemId = item.id;
+    row.classList.add("is-dragging");
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", item.id);
+    }
+  });
+
+  handle.addEventListener("dragend", () => {
+    draggedItemId = "";
+    clearDragClasses();
+  });
+
+  return handle;
+}
+
 function buildRow(item) {
   const tr = document.createElement("tr");
+  tr.className = "todo-row";
   tr.dataset.id = item.id;
+  attachDropTarget(tr, item.id);
 
   const itemCell = document.createElement("td");
   itemCell.className = "item-cell";
 
   const itemWrap = document.createElement("div");
   itemWrap.className = "item-wrap";
+
+  const dragHandle = buildDragHandle(item, tr);
 
   const nameInput = document.createElement("input");
   nameInput.className = "item-input";
@@ -161,7 +313,7 @@ function buildRow(item) {
 
   const actionWrap = buildActions(item);
 
-  itemWrap.append(nameInput, actionWrap);
+  itemWrap.append(dragHandle, nameInput, actionWrap);
   itemCell.append(itemWrap);
 
   const statusCell = document.createElement("td");
@@ -171,9 +323,11 @@ function buildRow(item) {
   textarea.className = "status-window";
   textarea.value = item.status || "";
   textarea.placeholder = "";
+  syncStatusState(textarea);
   textarea.spellcheck = true;
   textarea.setAttribute("aria-label", "status");
   textarea.addEventListener("input", () => {
+    syncStatusState(textarea);
     scrollStatusToBottom(textarea);
     scheduleSave(item.id, { status: textarea.value });
   });
