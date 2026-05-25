@@ -113,8 +113,11 @@ function buildNewRowButton() {
   const tr = document.createElement("tr");
   tr.className = "new-row-button-row";
 
-  const cell = document.createElement("td");
-  cell.colSpan = 2;
+  const itemCell = document.createElement("td");
+  itemCell.className = "new-row-cell item-cell";
+
+  const statusCell = document.createElement("td");
+  statusCell.className = "new-row-status-cell status-cell";
 
   const button = document.createElement("button");
   button.className = "new-row-button";
@@ -135,8 +138,8 @@ function buildNewRowButton() {
     render({ focusNew: true });
   });
 
-  cell.append(button);
-  tr.append(cell);
+  itemCell.append(button);
+  tr.append(itemCell, statusCell);
   return tr;
 }
 
@@ -169,6 +172,7 @@ function buildRow(item) {
   const textarea = document.createElement("textarea");
   textarea.className = "status-window";
   textarea.value = item.status || "";
+  textarea.placeholder = "status";
   textarea.spellcheck = true;
   textarea.setAttribute("aria-label", "status");
   textarea.addEventListener("input", () => {
