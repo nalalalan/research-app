@@ -83,45 +83,20 @@ textarea {
   padding: 14px 20px 46px;
 }
 
-.add-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 54px;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.add-row input {
-  width: 100%;
-  min-height: 54px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink);
-  padding: 0 16px;
-  outline: none;
-  box-shadow: 0 8px 24px rgba(71, 61, 50, 0.08);
-}
-
-.add-row input:focus,
 .item-input:focus,
 .status-window:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(111, 130, 118, 0.16);
 }
 
-.add-row button,
-.delete {
+.delete,
+.add-item {
   border: 0;
   border-radius: 8px;
   background: var(--ink);
   color: #fffdf8;
   cursor: pointer;
   font-weight: 800;
-}
-
-.add-row button {
-  min-height: 54px;
-  font-size: 1.7rem;
 }
 
 .table-shell {
@@ -197,9 +172,30 @@ tr:last-child td {
   color: var(--muted);
 }
 
+.add-item {
+  width: 36px;
+  height: 48px;
+  align-self: start;
+  font-size: 1.25rem;
+}
+
 .delete:hover {
   background: #ead4c4;
   color: var(--ink);
+}
+
+.add-item:hover {
+  background: #11100f;
+}
+
+.new-item-row td {
+  background: #fbf4ea;
+}
+
+.new-item-input,
+.new-status-window {
+  background: #fffdf8;
+  border-color: var(--line);
 }
 
 .status-window {
@@ -232,12 +228,6 @@ tr:last-child td {
 .status-window::-webkit-scrollbar-thumb {
   background: #b8a99b;
   border-radius: 999px;
-}
-
-.empty {
-  padding: 26px;
-  color: var(--muted);
-  border-top: 1px solid var(--line);
 }
 
 .gate-page {
@@ -344,6 +334,11 @@ tr:last-child td {
   .delete {
     width: 34px;
     height: 34px;
+  }
+
+  .add-item {
+    width: 34px;
+    height: 46px;
   }
 
   .status-window {
