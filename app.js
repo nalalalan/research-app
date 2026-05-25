@@ -170,7 +170,7 @@ function buildRow(item) {
   const textarea = document.createElement("textarea");
   textarea.className = "status-window";
   textarea.value = item.status || "";
-  textarea.placeholder = "status";
+  textarea.placeholder = "";
   textarea.spellcheck = true;
   textarea.setAttribute("aria-label", "status");
   textarea.addEventListener("input", () => {
