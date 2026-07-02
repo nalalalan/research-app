@@ -1,9 +1,7 @@
 const itemsEl = document.querySelector("#items");
 const transcriptsEl = document.querySelector("#transcripts");
 const transcriptInput = document.querySelector("#transcriptInput");
-const transcriptFile = document.querySelector("#transcriptFile");
 const analyzeButton = document.querySelector("#analyzeButton");
-const clearTranscript = document.querySelector("#clearTranscript");
 const intakeStatus = document.querySelector("#intakeStatus");
 
 const saveTimers = new Map();
@@ -363,7 +361,7 @@ async function analyzeTranscript() {
   const transcript = transcriptInput.value.trim();
   if (!transcript) {
     transcriptInput.focus();
-    setStatus("paste or upload a transcription", "bad");
+    setStatus("paste a transcription", "bad");
     return;
   }
   analyzeButton.disabled = true;
@@ -383,7 +381,6 @@ async function analyzeTranscript() {
     transcripts = payload.allTranscripts || transcripts;
     render();
     transcriptInput.value = "";
-    transcriptFile.value = "";
     const count = payload.items?.length || 0;
     setStatus(count ? `added ${count} rows` : "saved transcription, no supported todos found");
   } finally {
@@ -391,19 +388,7 @@ async function analyzeTranscript() {
   }
 }
 
-transcriptFile.addEventListener("change", async () => {
-  const file = transcriptFile.files?.[0];
-  if (!file) return;
-  transcriptInput.value = await file.text();
-  setStatus(`${file.name} loaded`);
-});
-
 analyzeButton.addEventListener("click", analyzeTranscript);
-clearTranscript.addEventListener("click", () => {
-  transcriptInput.value = "";
-  transcriptFile.value = "";
-  setStatus("cleared");
-});
 
 document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && document.activeElement === transcriptInput) {

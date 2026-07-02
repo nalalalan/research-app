@@ -4,7 +4,7 @@ Meeting-transcript todo extractor.
 
 Shape:
 
-- paste or upload a long meeting transcript
+- paste a long meeting transcript
 - AI infers the transcript title/date-time from the transcript text
 - AI extracts only transcript-supported todo rows; rows are added automatically after analysis
 - rows stay editable and reviewable

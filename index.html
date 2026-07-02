@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>todo.aolabs.io</title>
   <link rel="icon" href="/favicon.svg?v=20260702-brief-stack">
-  <link rel="stylesheet" href="/styles.css?v=20260702-archive">
+  <link rel="stylesheet" href="/styles.css?v=20260702-one-button">
 </head>
 <body>
   <header class="topbar">
@@ -23,14 +23,7 @@
       <textarea id="transcriptInput" class="transcript-input" spellcheck="true" placeholder="paste meeting transcription"></textarea>
       <div class="intake-foot">
         <span id="intakeStatus">ready</span>
-        <div class="intake-actions">
-          <label class="file-button">
-            <input id="transcriptFile" type="file" accept=".txt,.md,.vtt,.srt,text/plain,text/markdown">
-            upload
-          </label>
-          <button id="clearTranscript" class="quiet-button" type="button">clear</button>
-          <button id="analyzeButton" class="primary-button" type="button">analyze</button>
-        </div>
+        <button id="analyzeButton" class="primary-button" type="button">analyze</button>
       </div>
     </section>
 
@@ -72,6 +65,6 @@
     </section>
   </main>
 
-  <script src="/app.js?v=20260702-archive"></script>
+  <script src="/app.js?v=20260702-one-button"></script>
 </body>
 </html>

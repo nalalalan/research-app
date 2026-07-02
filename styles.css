@@ -158,19 +158,11 @@ button {
   font-weight: 660;
 }
 
-.intake-actions {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
 #intakeStatus[data-tone="bad"] {
   color: var(--rust);
 }
 
 .primary-button,
-.quiet-button,
-.file-button,
 .delete-row,
 .pdf-link {
   border-radius: 6px;
@@ -179,7 +171,6 @@ button {
 }
 
 .primary-button,
-.file-button,
 .pdf-link {
   min-height: 34px;
   padding: 0 12px;
@@ -190,7 +181,6 @@ button {
 }
 
 .primary-button:hover,
-.file-button:hover,
 .pdf-link:hover {
   background: var(--teal-deep);
 }
@@ -198,32 +188,6 @@ button {
 .primary-button:disabled {
   cursor: wait;
   opacity: 0.66;
-}
-
-.quiet-button {
-  min-height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--muted);
-}
-
-.quiet-button:hover {
-  background: var(--surface-strong);
-  color: var(--ink);
-}
-
-.file-button {
-  display: inline-flex;
-  align-items: center;
-}
-
-.file-button input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
 }
 
 .table-shell {
@@ -543,16 +507,6 @@ blockquote {
 
   .shell {
     padding: 0 12px 28px;
-  }
-
-  .intake-foot {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .intake-actions {
-    justify-content: flex-end;
-    flex-wrap: wrap;
   }
 
   .transcript-input {
