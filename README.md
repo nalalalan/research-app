@@ -11,6 +11,7 @@ Shape:
 - table columns: todo, date / time, ease /100, Disney /100, total
 - total score is computed as `easeScore + disneyScore`
 - raw transcript text is stored server-side and exposed through readable generated PDFs under the transcription archive
+- transcript cards have a delete action that removes both the saved transcription and todo rows generated from it
 - older archived Todo rows are preserved under `legacyItems` and hidden from the new transcript table
 
 Correctness guardrails:
@@ -28,6 +29,7 @@ Runtime:
 - `POST /api/todo/transcripts/analyze` stores a transcript and appends AI-extracted rows.
 - `PATCH /api/todo/items/{item_id}` edits row fields and review state.
 - `DELETE /api/todo/items/{item_id}` removes a row.
+- `DELETE /api/todo/transcripts/{transcript_id}` removes a saved transcript and its generated rows.
 - `GET /api/todo/transcripts/{transcript_id}/pdf` serves the formatted transcript PDF.
 - `GET /api/todo/summary` is public-safe JSON for Progress.
 
@@ -36,4 +38,5 @@ Railway variables:
 - `OPENAI_API_KEY`
 - `TODO_OPENAI_MODEL` or `OPENAI_MODEL`, default `gpt-5-mini`
 - `TODO_OPENAI_REASONING_EFFORT`, default `medium`
+- `TODO_ANALYSIS_MAX_OUTPUT_TOKENS`, default `12000`
 - `TODO_STATE_PATH`, optional; Railway volume should normally use `/data/todo_state.json`

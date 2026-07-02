@@ -29,6 +29,7 @@ MAX_TRANSCRIPT_CHARS = int(os.getenv("TODO_MAX_TRANSCRIPT_CHARS", "240000"))
 CHUNK_CHARS = int(os.getenv("TODO_CHUNK_CHARS", "28000"))
 CHUNK_OVERLAP_CHARS = int(os.getenv("TODO_CHUNK_OVERLAP_CHARS", "900"))
 MAX_ITEMS_PER_CHUNK = int(os.getenv("TODO_MAX_ITEMS_PER_CHUNK", "18"))
+ANALYSIS_MAX_OUTPUT_TOKENS = int(os.getenv("TODO_ANALYSIS_MAX_OUTPUT_TOKENS", "12000"))
 STATE_SCHEMA = "transcript_todo_v1"
 
 
@@ -225,6 +226,35 @@ def _extract_response_text(data: dict[str, Any]) -> str:
     return ""
 
 
+def _parse_json_object(text: str) -> dict[str, Any]:
+    raw = _safe_text(text, 1_000_000).strip()
+    if not raw:
+        raise ValueError("empty response")
+    candidates = [raw]
+    fenced = re.match(r"^```(?:json)?\s*(.*?)\s*```$", raw, flags=re.DOTALL | re.IGNORECASE)
+    if fenced:
+        candidates.append(fenced.group(1).strip())
+    first = raw.find("{")
+    last = raw.rfind("}")
+    if first != -1 and last != -1 and last > first:
+        candidates.append(raw[first : last + 1].strip())
+    decoder = json.JSONDecoder()
+    errors: list[str] = []
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            errors.append(str(exc))
+            try:
+                payload, _ = decoder.raw_decode(candidate)
+            except json.JSONDecodeError as raw_exc:
+                errors.append(str(raw_exc))
+                continue
+        if isinstance(payload, dict):
+            return payload
+    raise ValueError("; ".join(errors) or "not a JSON object")
+
+
 async def _infer_transcript_metadata(text: str) -> dict[str, str]:
     excerpt = text[:16000]
     fallback = {
@@ -278,7 +308,7 @@ async def _infer_transcript_metadata(text: str) -> dict[str, str]:
     if response.status_code >= 400:
         return fallback
     try:
-        payload = json.loads(_extract_response_text(response.json()))
+        payload = _parse_json_object(_extract_response_text(response.json()))
     except Exception:
         return fallback
     title = _safe_text(payload.get("title"), 180) or fallback["title"]
@@ -495,7 +525,7 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
         "model": OPENAI_MODEL,
         "store": False,
         "reasoning": {"effort": OPENAI_REASONING_EFFORT},
-        "max_output_tokens": 5200,
+        "max_output_tokens": ANALYSIS_MAX_OUTPUT_TOKENS,
         "instructions": "\n".join(
             [
                 "You convert a private meeting transcript into a high-stakes todo table for Alan.",
@@ -536,11 +566,14 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
         error_text = response.text[:500]
         raise HTTPException(status_code=502, detail=f"AI analysis failed: {error_text}")
 
-    text = _extract_response_text(response.json())
+    response_payload = response.json()
+    text = _extract_response_text(response_payload)
     try:
-        payload = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=502, detail="AI analysis returned invalid JSON") from exc
+        payload = _parse_json_object(text)
+    except ValueError as exc:
+        if response_payload.get("status") == "incomplete":
+            raise HTTPException(status_code=502, detail="AI response was incomplete; the transcription was saved") from exc
+        raise HTTPException(status_code=502, detail="AI response could not be read; the transcription was saved") from exc
 
     raw_items = payload.get("items", [])
     if not isinstance(raw_items, list):
@@ -766,6 +799,29 @@ async def delete_item(item_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="not found")
     _save_state(state)
     return {"status": "ok", "updatedAt": state["updatedAt"]}
+
+
+@app.delete("/api/todo/transcripts/{transcript_id}")
+async def delete_transcript(transcript_id: str) -> dict[str, Any]:
+    state = _load_state()
+    transcripts = state.get("transcripts", [])
+    before_transcripts = len(transcripts)
+    state["transcripts"] = [entry for entry in transcripts if str(entry.get("id")) != transcript_id]
+    if len(state["transcripts"]) == before_transcripts:
+        raise HTTPException(status_code=404, detail="not found")
+    before_items = len(state.get("items", []))
+    state["items"] = [
+        item for item in state.get("items", []) if str(item.get("sourceTranscriptId")) != transcript_id
+    ]
+    removed_items = before_items - len(state["items"])
+    _save_state(state)
+    return {
+        "status": "ok",
+        "removedItems": removed_items,
+        "items": [_compact_item(item) for item in state.get("items", [])],
+        "transcripts": [_compact_transcript(entry) for entry in state.get("transcripts", [])],
+        "updatedAt": state["updatedAt"],
+    }
 
 
 @app.get("/api/todo/transcripts/{transcript_id}/pdf")

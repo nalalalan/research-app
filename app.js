@@ -11,6 +11,7 @@ let transcripts = [];
 let aiConfigured = false;
 let modelName = "";
 let confirmDeleteId = "";
+let confirmTranscriptDeleteId = "";
 
 function setStatus(text, tone = "") {
   intakeStatus.textContent = text;
@@ -134,6 +135,26 @@ async function deleteItem(item) {
   confirmDeleteId = "";
   renderItems();
   setStatus("deleted");
+}
+
+async function deleteTranscript(entry) {
+  if (confirmTranscriptDeleteId !== entry.id) {
+    confirmTranscriptDeleteId = entry.id;
+    renderTranscripts();
+    return;
+  }
+  const response = await fetch(`/api/todo/transcripts/${entry.id}`, { method: "DELETE" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    setStatus(payload.detail || "delete failed", "bad");
+    return;
+  }
+  items = payload.items || items.filter((item) => item.sourceTranscriptId !== entry.id);
+  transcripts = payload.transcripts || transcripts.filter((transcript) => transcript.id !== entry.id);
+  confirmTranscriptDeleteId = "";
+  render();
+  const removed = payload.removedItems || 0;
+  setStatus(removed ? `deleted transcription and ${removed} rows` : "deleted transcription");
 }
 
 function buildTodoCell(item) {
@@ -329,9 +350,24 @@ function renderTranscripts() {
     link.rel = "noopener";
     link.textContent = "open pdf";
 
+    const deleteButton = document.createElement("button");
+    deleteButton.className =
+      confirmTranscriptDeleteId === entry.id ? "transcript-delete is-confirming" : "transcript-delete";
+    deleteButton.type = "button";
+    deleteButton.setAttribute(
+      "aria-label",
+      confirmTranscriptDeleteId === entry.id ? "confirm delete transcription" : "delete transcription",
+    );
+    deleteButton.textContent = confirmTranscriptDeleteId === entry.id ? "delete?" : "delete";
+    deleteButton.addEventListener("click", () => deleteTranscript(entry));
+
+    const actions = document.createElement("div");
+    actions.className = "transcript-actions";
+    actions.append(link, deleteButton);
+
     card.append(title, meta);
     if (basis.textContent) card.append(basis);
-    card.append(link);
+    card.append(actions);
     return card;
   });
   transcriptsEl.replaceChildren(...cards);

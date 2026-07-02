@@ -164,7 +164,8 @@ button {
 
 .primary-button,
 .delete-row,
-.pdf-link {
+.pdf-link,
+.transcript-delete {
   border-radius: 6px;
   cursor: pointer;
   font-weight: 720;
@@ -486,6 +487,29 @@ blockquote {
   align-items: center;
   margin-top: 3px;
   font-size: 12.5px;
+}
+
+.transcript-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.transcript-delete {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(154, 78, 66, 0.16);
+  background: #fffaf7;
+  color: var(--rust);
+  font-size: 12.5px;
+}
+
+.transcript-delete:hover,
+.transcript-delete.is-confirming {
+  border-color: rgba(154, 78, 66, 0.32);
+  background: var(--rust-soft);
 }
 
 .empty-transcripts {
