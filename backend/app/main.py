@@ -214,6 +214,7 @@ def _compact_item(item: dict[str, Any]) -> dict[str, Any]:
         "state": _safe_text(item.get("state") or "active", 30),
         "createdAt": str(item.get("createdAt", "")),
         "updatedAt": str(item.get("updatedAt", "")),
+        "doneAt": str(item.get("doneAt", "")),
     }
 
 
@@ -1172,6 +1173,7 @@ async def update_item(item_id: str, body: UpdateItemBody) -> dict[str, Any]:
     allowed_states = {"review", "active", "done", "set_aside", "needs_evidence", "manual"}
     for item in state.get("items", []):
         if str(item.get("id")) == item_id:
+            now = _now()
             for field in ["task", "details", "dateAdded", "timeEstimate", "why"]:
                 value = getattr(body, field)
                 if value is not None:
@@ -1181,8 +1183,14 @@ async def update_item(item_id: str, body: UpdateItemBody) -> dict[str, Any]:
             if body.disneyScore is not None:
                 item["disneyScore"] = _score(body.disneyScore)
             if body.state is not None:
-                item["state"] = body.state.strip() if body.state.strip() in allowed_states else "review"
-            item["updatedAt"] = _now()
+                prior_state = str(item.get("state") or "")
+                next_state = body.state.strip() if body.state.strip() in allowed_states else "review"
+                item["state"] = next_state
+                if next_state == "done" and prior_state != "done":
+                    item["doneAt"] = now
+                elif next_state != "done":
+                    item.pop("doneAt", None)
+            item["updatedAt"] = now
             _save_state(state)
             return {"item": _compact_item(item), "updatedAt": state["updatedAt"]}
     raise HTTPException(status_code=404, detail="not found")

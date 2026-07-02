@@ -1,9 +1,12 @@
 const itemsEl = document.querySelector("#items");
+const doneItemsEl = document.querySelector("#doneItems");
+const doneShell = document.querySelector("#doneShell");
 const transcriptsEl = document.querySelector("#transcripts");
 const transcriptInput = document.querySelector("#transcriptInput");
 const analyzeButton = document.querySelector("#analyzeButton");
 const intakeStatus = document.querySelector("#intakeStatus");
 const todoCountEl = document.querySelector("#todoCount");
+const doneCountEl = document.querySelector("#doneCount");
 const sortButtons = [...document.querySelectorAll(".sort-button")];
 
 const saveTimers = new Map();
@@ -43,13 +46,30 @@ function addedTimeValue(item) {
   return Number.isFinite(dateTime) ? dateTime : 0;
 }
 
+function doneTimeValue(item) {
+  const doneTime = Date.parse(safeText(item.doneAt));
+  if (Number.isFinite(doneTime)) return doneTime;
+  const updatedTime = Date.parse(safeText(item.updatedAt));
+  if (Number.isFinite(updatedTime)) return updatedTime;
+  return addedTimeValue(item);
+}
+
+function isDone(item) {
+  return safeText(item.state) === "done";
+}
+
 function todoCountLabel(count) {
   const safeCount = Math.max(0, Number(count) || 0);
   return `${safeCount} ${safeCount === 1 ? "todo" : "todos"}`;
 }
 
-function updateTodoCount() {
-  if (todoCountEl) todoCountEl.textContent = todoCountLabel(items.length);
+function updateTodoCount(activeCount, doneCount) {
+  if (todoCountEl) {
+    todoCountEl.textContent = `${todoCountLabel(items.length)} / ${activeCount} active`;
+  }
+  if (doneCountEl) {
+    doneCountEl.textContent = `${doneCount} done`;
+  }
 }
 
 function formatDate(value) {
@@ -162,11 +182,12 @@ async function markDone(item) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ state: "done" }),
   });
+  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     setStatus("save failed", "bad");
     return;
   }
-  item.state = "done";
+  Object.assign(item, payload.item || { state: "done" });
   renderItems();
   setStatus("done");
 }
@@ -224,13 +245,15 @@ function buildTodoCell(item) {
   const actions = document.createElement("div");
   actions.className = "row-actions";
 
-  const doneButton = document.createElement("button");
-  doneButton.className = item.state === "done" ? "done-row is-done" : "done-row";
-  doneButton.type = "button";
-  doneButton.setAttribute("aria-label", "mark row done");
-  doneButton.textContent = "done";
-  doneButton.addEventListener("click", () => markDone(item));
-  actions.append(doneButton);
+  if (!isDone(item)) {
+    const doneButton = document.createElement("button");
+    doneButton.className = "done-row";
+    doneButton.type = "button";
+    doneButton.setAttribute("aria-label", "mark row done");
+    doneButton.textContent = "done";
+    doneButton.addEventListener("click", () => markDone(item));
+    actions.append(doneButton);
+  }
 
   const deleteButton = document.createElement("button");
   deleteButton.className = confirmDeleteId === item.id ? "delete-row is-confirming" : "delete-row";
@@ -355,10 +378,10 @@ function sortValue(item, key) {
   return totalScore(item);
 }
 
-function sortedItems() {
+function sortedItems(itemList = items) {
   const activeKey = sortState.key || "total";
   const direction = sortState.key ? sortState.direction : "desc";
-  return [...items].sort((a, b) => {
+  return [...itemList].sort((a, b) => {
     const left = sortValue(a, activeKey);
     const right = sortValue(b, activeKey);
     let result = 0;
@@ -384,19 +407,25 @@ function updateSortHeaders() {
 
 function renderItems() {
   updateSortHeaders();
-  updateTodoCount();
-  const sorted = sortedItems();
+  const activeItems = items.filter((item) => !isDone(item));
+  const doneItems = items.filter(isDone).sort((a, b) => doneTimeValue(b) - doneTimeValue(a));
+  updateTodoCount(activeItems.length, doneItems.length);
+  const sorted = sortedItems(activeItems);
   if (!sorted.length) {
     const row = document.createElement("tr");
     row.className = "empty-row";
     const cell = document.createElement("td");
     cell.colSpan = 4;
-    cell.textContent = "no todo rows yet";
+    cell.textContent = items.length ? "no active todo rows" : "no todo rows yet";
     row.append(cell);
     itemsEl.replaceChildren(row);
-    return;
+  } else {
+    itemsEl.replaceChildren(...sorted.map(buildRow));
   }
-  itemsEl.replaceChildren(...sorted.map(buildRow));
+  if (doneShell) doneShell.hidden = !doneItems.length;
+  if (doneItemsEl) {
+    doneItemsEl.replaceChildren(...doneItems.map(buildRow));
+  }
 }
 
 function renderTranscripts() {

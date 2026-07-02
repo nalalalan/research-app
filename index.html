@@ -56,6 +56,31 @@
       </div>
     </section>
 
+    <section id="doneShell" class="table-shell done-shell" aria-label="done todo table" hidden>
+      <div class="table-head">
+        <span id="doneCount" class="todo-count">0 done</span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <colgroup>
+            <col class="col-todo">
+            <col class="col-ease">
+            <col class="col-disney">
+            <col class="col-total">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>done</th>
+              <th>ease /100</th>
+              <th>disney /100</th>
+              <th>total</th>
+            </tr>
+          </thead>
+          <tbody id="doneItems"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="transcript-shell" aria-label="transcription PDFs">
       <div class="section-head">
         <h2>transcriptions</h2>
@@ -66,6 +91,6 @@
     </section>
   </main>
 
-  <script src="/app.js?v=20260702-todo-date-sort-visible"></script>
+  <script src="/app.js?v=20260702-done-section"></script>
 </body>
 </html>

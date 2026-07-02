@@ -196,6 +196,22 @@ button {
   overflow: hidden;
 }
 
+.done-shell {
+  margin-top: 14px;
+}
+
+.done-shell[hidden] {
+  display: none;
+}
+
+.done-shell th {
+  background: #f2f0e9;
+}
+
+.done-shell .todo-row td {
+  background: rgba(248, 247, 241, 0.82);
+}
+
 .table-head {
   display: flex;
   align-items: center;

@@ -12,7 +12,7 @@ Shape:
 - table header shows the current total number of todos
 - clicking the todo header cell sorts by date added, newest-to-oldest first and then oldest-to-newest; numeric columns sort high-to-low first, then low-to-high
 - each todo cell renders the action/context/added time/time estimate followed by a quote block formatted as `Speaker: exact quote`
-- row state is not a dropdown; the row has a direct `done` action
+- row state is not a dropdown; the row has a direct `done` action that moves the row into a dedicated done section below the active todo table
 - total score is computed as `easeScore + disneyScore`
 - raw transcript text is stored server-side and exposed through readable generated PDFs under the transcription archive
 - transcript cards show a real AI summary or todo-derived summary, not the metadata evidence quote
