@@ -65,7 +65,7 @@ function todoCountLabel(count) {
 
 function updateTodoCount(activeCount, doneCount) {
   if (todoCountEl) {
-    todoCountEl.textContent = `${todoCountLabel(items.length)} / ${activeCount} active`;
+    todoCountEl.textContent = `${activeCount} active / ${doneCount} done`;
   }
   if (doneCountEl) {
     doneCountEl.textContent = `${doneCount} done`;

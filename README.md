@@ -9,7 +9,7 @@ Shape:
 - AI extracts only transcript-supported todo rows; rows are added automatically after analysis
 - rows stay editable and reviewable
 - table columns: todo, ease /100, Disney /100, total
-- table header shows the current total number of todos
+- table header shows active and done counts as `__ active / __ done`
 - clicking the todo header cell sorts by date added, newest-to-oldest first and then oldest-to-newest; numeric columns sort high-to-low first, then low-to-high
 - each todo cell renders the action/context/added time/time estimate followed by a quote block formatted as `Speaker: exact quote`
 - row state is not a dropdown; the row has a direct `done` action that moves the row into a dedicated done section below the active todo table
