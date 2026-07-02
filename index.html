@@ -16,23 +16,56 @@
     </a>
     <img class="app-icon" src="/favicon.svg" alt="">
     <h1>todo</h1>
+    <button id="logout" class="quiet-button" type="button">lock</button>
   </header>
 
   <main class="shell">
+    <section class="intake-shell" aria-label="meeting transcript intake">
+      <div class="intake-head">
+        <input id="transcriptName" class="meeting-name" autocomplete="off" placeholder="meeting name or date">
+        <label class="file-button">
+          <input id="transcriptFile" type="file" accept=".txt,.md,.vtt,.srt,text/plain,text/markdown">
+          upload
+        </label>
+        <button id="analyzeButton" class="primary-button" type="button">analyze</button>
+      </div>
+      <textarea id="transcriptInput" class="transcript-input" spellcheck="true" placeholder="paste meeting transcript"></textarea>
+      <div class="intake-foot">
+        <span id="intakeStatus">ready</span>
+        <button id="clearTranscript" class="quiet-button" type="button">clear</button>
+      </div>
+    </section>
+
     <section class="table-shell" aria-label="todo table">
-      <table>
-        <thead>
-          <tr>
-            <th>item</th>
-            <th>status</th>
-          </tr>
-        </thead>
-        <tbody id="items">
-          <tr class="loading-row">
-            <td colspan="2">loading</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <colgroup>
+            <col class="col-details">
+            <col class="col-date">
+            <col class="col-time">
+            <col class="col-ease">
+            <col class="col-disney">
+            <col class="col-total">
+            <col class="col-why">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>todo + context</th>
+              <th>date added</th>
+              <th>time</th>
+              <th>ease /100</th>
+              <th>disney /100</th>
+              <th>total</th>
+              <th>why</th>
+            </tr>
+          </thead>
+          <tbody id="items">
+            <tr class="loading-row">
+              <td colspan="7">loading</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   </main>
 

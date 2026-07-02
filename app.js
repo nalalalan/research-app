@@ -1,132 +1,37 @@
 const itemsEl = document.querySelector("#items");
+const transcriptInput = document.querySelector("#transcriptInput");
+const transcriptName = document.querySelector("#transcriptName");
+const transcriptFile = document.querySelector("#transcriptFile");
+const analyzeButton = document.querySelector("#analyzeButton");
+const clearTranscript = document.querySelector("#clearTranscript");
+const intakeStatus = document.querySelector("#intakeStatus");
+const logoutButton = document.querySelector("#logout");
+
 const saveTimers = new Map();
 
 let items = [];
+let aiConfigured = false;
+let modelName = "";
 let draftOpen = false;
-let openMenuId = "";
 let confirmDeleteId = "";
-let draggedItemId = "";
 
-document.addEventListener("click", (event) => {
-  if (!openMenuId || event.target.closest(".item-actions")) return;
-  openMenuId = "";
-  confirmDeleteId = "";
-  render();
-});
-
-function scrollStatusToBottom(textarea) {
-  requestAnimationFrame(() => {
-    textarea.scrollTop = textarea.scrollHeight;
-  });
+function setStatus(text, tone = "") {
+  intakeStatus.textContent = text;
+  intakeStatus.dataset.tone = tone;
 }
 
-function syncStatusState(textarea) {
-  textarea.classList.toggle("is-empty", !textarea.value.trim());
+function safeText(value) {
+  return value == null ? "" : String(value);
 }
 
-function clearDragClasses() {
-  document.querySelectorAll(".is-dragging, .is-drop-before, .is-drop-after").forEach((row) => {
-    row.classList.remove("is-dragging", "is-drop-before", "is-drop-after");
-  });
+function scoreValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 0;
+  return Math.max(0, Math.min(100, Math.round(number)));
 }
 
-function placeDropMarker(row, event) {
-  if (!draggedItemId || row.dataset.id === draggedItemId) return "before";
-  const rect = row.getBoundingClientRect();
-  const placement = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
-  document.querySelectorAll(".is-drop-before, .is-drop-after").forEach((entry) => {
-    if (entry !== row) entry.classList.remove("is-drop-before", "is-drop-after");
-  });
-  row.classList.toggle("is-drop-before", placement === "before");
-  row.classList.toggle("is-drop-after", placement === "after");
-  return placement;
-}
-
-function moveItem(dragId, targetId, placement = "before") {
-  if (!dragId || !targetId || dragId === targetId) return false;
-  const fromIndex = items.findIndex((item) => item.id === dragId);
-  if (fromIndex === -1) return false;
-  const [draggedItem] = items.splice(fromIndex, 1);
-  const targetIndex = items.findIndex((item) => item.id === targetId);
-  if (targetIndex === -1) {
-    items.splice(fromIndex, 0, draggedItem);
-    return false;
-  }
-  const insertIndex = placement === "after" ? targetIndex + 1 : targetIndex;
-  items.splice(insertIndex, 0, draggedItem);
-  return true;
-}
-
-function moveItemToEnd(dragId) {
-  const fromIndex = items.findIndex((item) => item.id === dragId);
-  if (fromIndex === -1 || fromIndex === items.length - 1) return false;
-  const [draggedItem] = items.splice(fromIndex, 1);
-  items.push(draggedItem);
-  return true;
-}
-
-async function persistOrder() {
-  const response = await fetch("/api/todo/items/order", {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids: items.map((item) => item.id) }),
-  });
-  if (response.ok) {
-    const payload = await response.json();
-    items = payload.items || items;
-  } else {
-    await loadItems();
-  }
-}
-
-function attachDropTarget(row, itemId) {
-  row.addEventListener("dragover", (event) => {
-    if (!draggedItemId || draggedItemId === itemId) return;
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-    placeDropMarker(row, event);
-  });
-
-  row.addEventListener("dragleave", () => {
-    row.classList.remove("is-drop-before", "is-drop-after");
-  });
-
-  row.addEventListener("drop", async (event) => {
-    if (!draggedItemId || draggedItemId === itemId) return;
-    event.preventDefault();
-    const placement = placeDropMarker(row, event);
-    const moved = moveItem(draggedItemId, itemId, placement);
-    draggedItemId = "";
-    clearDragClasses();
-    if (moved) await persistOrder();
-    render();
-  });
-}
-
-function attachEndDropTarget(row) {
-  row.addEventListener("dragover", (event) => {
-    if (!draggedItemId) return;
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-    document.querySelectorAll(".is-drop-before, .is-drop-after").forEach((entry) => {
-      if (entry !== row) entry.classList.remove("is-drop-before", "is-drop-after");
-    });
-    row.classList.add("is-drop-before");
-  });
-
-  row.addEventListener("dragleave", () => {
-    row.classList.remove("is-drop-before");
-  });
-
-  row.addEventListener("drop", async (event) => {
-    if (!draggedItemId) return;
-    event.preventDefault();
-    const moved = moveItemToEnd(draggedItemId);
-    draggedItemId = "";
-    clearDragClasses();
-    if (moved) await persistOrder();
-    render();
-  });
+function totalScore(item) {
+  return scoreValue(item.easeScore) + scoreValue(item.disneyScore);
 }
 
 function scheduleSave(id, patch) {
@@ -136,299 +41,376 @@ function scheduleSave(id, patch) {
     id,
     setTimeout(async () => {
       saveTimers.delete(id);
-      await fetch(`/api/todo/items/${id}`, {
+      const response = await fetch(`/api/todo/items/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-    }, 500),
+      if (!response.ok) {
+        setStatus("save failed", "bad");
+        return;
+      }
+      setStatus("saved");
+    }, 450),
   );
 }
 
-async function createItem(row) {
-  const itemInput = row.querySelector(".new-item-input");
-  const statusInput = row.querySelector(".new-status-window");
-  const value = itemInput.value.trim();
-  if (!value) {
-    itemInput.focus();
+function autosize(textarea) {
+  textarea.style.height = "0px";
+  textarea.style.height = `${Math.min(220, Math.max(36, textarea.scrollHeight))}px`;
+}
+
+function makeInput(item, field, className, multiline = false) {
+  const control = document.createElement(multiline ? "textarea" : "input");
+  control.className = className;
+  control.value = safeText(item[field]);
+  control.spellcheck = true;
+  control.setAttribute("aria-label", field);
+  control.addEventListener("input", () => {
+    item[field] = control.value;
+    if (multiline) autosize(control);
+    scheduleSave(item.id, { [field]: control.value });
+  });
+  if (multiline) requestAnimationFrame(() => autosize(control));
+  return control;
+}
+
+function makeStateSelect(item) {
+  const select = document.createElement("select");
+  select.className = "state-select";
+  select.setAttribute("aria-label", "row state");
+  [
+    ["review", "review"],
+    ["active", "active"],
+    ["done", "done"],
+    ["set_aside", "set aside"],
+    ["needs_evidence", "needs evidence"],
+  ].forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    select.append(option);
+  });
+  select.value = item.state || "review";
+  select.addEventListener("change", () => {
+    item.state = select.value;
+    scheduleSave(item.id, { state: select.value });
+  });
+  return select;
+}
+
+async function deleteItem(item) {
+  if (confirmDeleteId !== item.id) {
+    confirmDeleteId = item.id;
+    render();
     return;
   }
-  const response = await fetch("/api/todo/items", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ item: value, status: statusInput.value }),
-  });
-  if (!response.ok) return;
-  const payload = await response.json();
-  items.push(payload.item);
-  draftOpen = false;
-  render({ focusNewButton: true });
-}
-
-function buildNewRow() {
-  const tr = document.createElement("tr");
-  tr.className = "new-item-row";
-  attachEndDropTarget(tr);
-
-  const itemCell = document.createElement("td");
-  itemCell.className = "item-cell";
-
-  const itemWrap = document.createElement("div");
-  itemWrap.className = "item-wrap";
-
-  const dragSpacer = document.createElement("span");
-  dragSpacer.className = "drag-spacer";
-  dragSpacer.setAttribute("aria-hidden", "true");
-
-  const itemInput = document.createElement("input");
-  itemInput.className = "item-input new-item-input";
-  itemInput.placeholder = "new item";
-  itemInput.autocomplete = "off";
-  itemInput.setAttribute("aria-label", "new item");
-  itemInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      createItem(tr);
-    }
-  });
-
-  const addButton = document.createElement("button");
-  addButton.className = "add-item";
-  addButton.type = "button";
-  addButton.setAttribute("aria-label", "add item");
-  addButton.textContent = "+";
-  addButton.addEventListener("click", () => createItem(tr));
-
-  itemWrap.append(dragSpacer, itemInput, addButton);
-  itemCell.append(itemWrap);
-
-  const statusCell = document.createElement("td");
-  statusCell.className = "status-cell";
-
-  const textarea = document.createElement("textarea");
-  textarea.className = "status-window new-status-window";
-  textarea.placeholder = "status";
-  textarea.spellcheck = true;
-  textarea.setAttribute("aria-label", "new status");
-  textarea.addEventListener("input", () => scrollStatusToBottom(textarea));
-  textarea.addEventListener("focus", () => scrollStatusToBottom(textarea));
-  textarea.addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-      event.preventDefault();
-      createItem(tr);
-    }
-  });
-
-  statusCell.append(textarea);
-  tr.append(itemCell, statusCell);
-  return tr;
-}
-
-function buildNewRowButton() {
-  const tr = document.createElement("tr");
-  tr.className = "new-row-button-row";
-  attachEndDropTarget(tr);
-
-  const itemCell = document.createElement("td");
-  itemCell.className = "new-row-cell item-cell";
-  itemCell.colSpan = 2;
-
-  const button = document.createElement("button");
-  button.className = "new-row-button";
-  button.type = "button";
-  button.setAttribute("aria-label", "new row");
-
-  const plus = document.createElement("span");
-  plus.className = "new-row-plus";
-  plus.textContent = "+";
-  plus.setAttribute("aria-hidden", "true");
-
-  const label = document.createElement("span");
-  label.textContent = "New row";
-
-  button.append(plus, label);
-  button.addEventListener("click", () => {
-    draftOpen = true;
-    render({ focusNew: true });
-  });
-
-  itemCell.append(button);
-  tr.append(itemCell);
-  return tr;
-}
-
-function buildDragHandle(item, row) {
-  const handle = document.createElement("button");
-  handle.className = "drag-handle";
-  handle.type = "button";
-  handle.draggable = true;
-  handle.setAttribute("aria-label", "drag row");
-
-  const dots = document.createElement("span");
-  dots.className = "drag-dots";
-  dots.setAttribute("aria-hidden", "true");
-  for (let index = 0; index < 6; index += 1) {
-    dots.append(document.createElement("span"));
+  const response = await fetch(`/api/todo/items/${item.id}`, { method: "DELETE" });
+  if (!response.ok) {
+    setStatus("delete failed", "bad");
+    return;
   }
-  handle.append(dots);
+  items = items.filter((entry) => entry.id !== item.id);
+  confirmDeleteId = "";
+  render();
+  setStatus("deleted");
+}
 
-  handle.addEventListener("dragstart", (event) => {
-    draggedItemId = item.id;
-    row.classList.add("is-dragging");
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", item.id);
-    }
+function buildDetailsCell(item) {
+  const cell = document.createElement("td");
+  cell.className = "details-cell";
+
+  const top = document.createElement("div");
+  top.className = "row-top";
+  top.append(makeStateSelect(item));
+
+  const source = document.createElement("span");
+  source.className = "source-chip";
+  const sourceParts = [item.sourceSpeaker, item.confidence].filter(Boolean);
+  source.textContent = sourceParts.join(" · ") || "manual";
+  top.append(source);
+
+  const deleteButton = document.createElement("button");
+  deleteButton.className = confirmDeleteId === item.id ? "delete-row is-confirming" : "delete-row";
+  deleteButton.type = "button";
+  deleteButton.setAttribute("aria-label", confirmDeleteId === item.id ? "confirm delete row" : "delete row");
+  deleteButton.textContent = confirmDeleteId === item.id ? "delete?" : "×";
+  deleteButton.addEventListener("click", () => deleteItem(item));
+  top.append(deleteButton);
+
+  const task = makeInput(item, "task", "task-input", true);
+  const details = makeInput(item, "details", "details-input", true);
+  cell.append(top, task, details);
+
+  if (item.evidence?.length) {
+    const quote = document.createElement("blockquote");
+    quote.textContent = item.evidence[0];
+    cell.append(quote);
+  }
+
+  if (item.openQuestions?.length) {
+    const questions = document.createElement("div");
+    questions.className = "questions";
+    questions.textContent = item.openQuestions.join(" / ");
+    cell.append(questions);
+  }
+
+  return cell;
+}
+
+function buildDateCell(item) {
+  const cell = document.createElement("td");
+  const input = document.createElement("input");
+  input.className = "date-input";
+  input.type = "date";
+  input.value = safeText(item.dateAdded).slice(0, 10);
+  input.setAttribute("aria-label", "date added");
+  input.addEventListener("input", () => {
+    item.dateAdded = input.value;
+    scheduleSave(item.id, { dateAdded: input.value });
+  });
+  cell.append(input);
+  return cell;
+}
+
+function buildTimeCell(item) {
+  const cell = document.createElement("td");
+  cell.append(makeInput(item, "timeEstimate", "time-input"));
+  return cell;
+}
+
+function buildScoreCell(item, field, label) {
+  const cell = document.createElement("td");
+  cell.className = "score-cell";
+
+  const input = document.createElement("input");
+  input.className = "score-input";
+  input.type = "number";
+  input.min = "0";
+  input.max = "100";
+  input.value = scoreValue(item[field]);
+  input.setAttribute("aria-label", label);
+
+  const bar = document.createElement("span");
+  bar.className = "score-bar";
+  bar.style.setProperty("--score", `${scoreValue(item[field])}%`);
+
+  input.addEventListener("input", () => {
+    const score = scoreValue(input.value);
+    item[field] = score;
+    bar.style.setProperty("--score", `${score}%`);
+    rowTotalRefresh(item.id);
+    scheduleSave(item.id, { [field]: score });
   });
 
-  handle.addEventListener("dragend", () => {
-    draggedItemId = "";
-    clearDragClasses();
-  });
+  cell.append(input, bar);
+  return cell;
+}
 
-  return handle;
+function rowTotalRefresh(id) {
+  const item = items.find((entry) => entry.id === id);
+  const row = document.querySelector(`tr[data-id="${CSS.escape(id)}"]`);
+  if (!item || !row) return;
+  const total = row.querySelector(".total-score");
+  const totalBar = row.querySelector(".total-bar");
+  if (!total || !totalBar) return;
+  const value = totalScore(item);
+  total.textContent = String(value);
+  totalBar.style.setProperty("--score", `${Math.min(100, Math.round(value / 2))}%`);
+}
+
+function buildTotalCell(item) {
+  const cell = document.createElement("td");
+  cell.className = "total-cell";
+  const value = totalScore(item);
+  const number = document.createElement("span");
+  number.className = "total-score";
+  number.textContent = String(value);
+  const bar = document.createElement("span");
+  bar.className = "total-bar";
+  bar.style.setProperty("--score", `${Math.min(100, Math.round(value / 2))}%`);
+  cell.append(number, bar);
+  return cell;
+}
+
+function buildWhyCell(item) {
+  const cell = document.createElement("td");
+  cell.className = "why-cell";
+  cell.append(makeInput(item, "why", "why-input", true));
+  return cell;
 }
 
 function buildRow(item) {
-  const tr = document.createElement("tr");
-  tr.className = "todo-row";
-  tr.dataset.id = item.id;
-  attachDropTarget(tr, item.id);
-
-  const itemCell = document.createElement("td");
-  itemCell.className = "item-cell";
-
-  const itemWrap = document.createElement("div");
-  itemWrap.className = "item-wrap";
-
-  const dragHandle = buildDragHandle(item, tr);
-
-  const nameInput = document.createElement("input");
-  nameInput.className = "item-input";
-  nameInput.value = item.item || "";
-  nameInput.setAttribute("aria-label", "item");
-  nameInput.addEventListener("input", () => {
-    scheduleSave(item.id, { item: nameInput.value });
-  });
-
-  const actionWrap = buildActions(item);
-
-  itemWrap.append(dragHandle, nameInput, actionWrap);
-  itemCell.append(itemWrap);
-
-  const statusCell = document.createElement("td");
-  statusCell.className = "status-cell";
-
-  const textarea = document.createElement("textarea");
-  textarea.className = "status-window";
-  textarea.value = item.status || "";
-  textarea.placeholder = "";
-  syncStatusState(textarea);
-  textarea.spellcheck = true;
-  textarea.setAttribute("aria-label", "status");
-  textarea.addEventListener("input", () => {
-    syncStatusState(textarea);
-    scrollStatusToBottom(textarea);
-    scheduleSave(item.id, { status: textarea.value });
-  });
-  textarea.addEventListener("focus", () => scrollStatusToBottom(textarea));
-
-  statusCell.append(textarea);
-  tr.append(itemCell, statusCell);
-  scrollStatusToBottom(textarea);
-  return tr;
+  const row = document.createElement("tr");
+  row.className = `todo-row state-${item.state || "review"}`;
+  row.dataset.id = item.id;
+  row.append(
+    buildDetailsCell(item),
+    buildDateCell(item),
+    buildTimeCell(item),
+    buildScoreCell(item, "easeScore", "ease score"),
+    buildScoreCell(item, "disneyScore", "disney score"),
+    buildTotalCell(item),
+    buildWhyCell(item),
+  );
+  return row;
 }
 
-function buildActions(item) {
-  const actionWrap = document.createElement("div");
-  actionWrap.className = "item-actions";
+async function createManualItem(row) {
+  const task = row.querySelector("[data-new='task']").value.trim();
+  if (!task) {
+    row.querySelector("[data-new='task']").focus();
+    return;
+  }
+  const payload = {
+    task,
+    details: row.querySelector("[data-new='details']").value.trim(),
+    dateAdded: row.querySelector("[data-new='date']").value,
+    timeEstimate: row.querySelector("[data-new='time']").value.trim(),
+    easeScore: scoreValue(row.querySelector("[data-new='ease']").value),
+    disneyScore: scoreValue(row.querySelector("[data-new='disney']").value),
+    why: row.querySelector("[data-new='why']").value.trim(),
+  };
+  const response = await fetch("/api/todo/items", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    setStatus("row save failed", "bad");
+    return;
+  }
+  const data = await response.json();
+  items.push(data.item);
+  draftOpen = false;
+  render();
+  setStatus("row saved");
+}
 
-  const menuButton = document.createElement("button");
-  menuButton.className = "menu-button";
-  menuButton.type = "button";
-  menuButton.setAttribute("aria-label", "row actions");
-  menuButton.setAttribute("aria-expanded", String(openMenuId === item.id));
+function buildDraftRow() {
+  const row = document.createElement("tr");
+  row.className = "draft-row";
 
-  const dotStack = document.createElement("span");
-  dotStack.className = "dot-stack";
-  dotStack.setAttribute("aria-hidden", "true");
-  dotStack.append(document.createElement("span"), document.createElement("span"), document.createElement("span"));
-  menuButton.append(dotStack);
-  menuButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const shouldOpen = openMenuId !== item.id;
-    openMenuId = shouldOpen ? item.id : "";
-    confirmDeleteId = "";
+  const details = document.createElement("td");
+  const task = document.createElement("textarea");
+  task.className = "task-input";
+  task.placeholder = "todo item";
+  task.dataset.new = "task";
+  task.addEventListener("input", () => autosize(task));
+
+  const context = document.createElement("textarea");
+  context.className = "details-input";
+  context.placeholder = "context";
+  context.dataset.new = "details";
+  context.addEventListener("input", () => autosize(context));
+
+  const actions = document.createElement("div");
+  actions.className = "draft-actions";
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "primary-button small";
+  save.textContent = "save";
+  save.addEventListener("click", () => createManualItem(row));
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "quiet-button small";
+  cancel.textContent = "cancel";
+  cancel.addEventListener("click", () => {
+    draftOpen = false;
     render();
   });
+  actions.append(save, cancel);
+  details.append(task, context, actions);
 
-  actionWrap.append(menuButton);
+  const date = document.createElement("td");
+  const dateInput = document.createElement("input");
+  dateInput.className = "date-input";
+  dateInput.type = "date";
+  dateInput.dataset.new = "date";
+  dateInput.value = new Date().toISOString().slice(0, 10);
+  date.append(dateInput);
 
-  if (openMenuId !== item.id) return actionWrap;
+  const time = document.createElement("td");
+  const timeInput = document.createElement("input");
+  timeInput.className = "time-input";
+  timeInput.placeholder = "30 min";
+  timeInput.dataset.new = "time";
+  time.append(timeInput);
 
-  const menu = document.createElement("div");
-  menu.className = "row-menu";
-  menu.addEventListener("click", (event) => event.stopPropagation());
+  const ease = document.createElement("td");
+  const easeScore = document.createElement("input");
+  easeScore.className = "score-input";
+  easeScore.type = "number";
+  easeScore.min = "0";
+  easeScore.max = "100";
+  easeScore.value = "50";
+  easeScore.dataset.new = "ease";
+  ease.append(easeScore);
 
-  if (confirmDeleteId === item.id) {
-    const message = document.createElement("p");
-    message.className = "confirm-text";
-    message.textContent = "Are you sure you want to delete?";
+  const disney = document.createElement("td");
+  const disneyScore = document.createElement("input");
+  disneyScore.className = "score-input";
+  disneyScore.type = "number";
+  disneyScore.min = "0";
+  disneyScore.max = "100";
+  disneyScore.value = "50";
+  disneyScore.dataset.new = "disney";
+  disney.append(disneyScore);
 
-    const confirmActions = document.createElement("div");
-    confirmActions.className = "confirm-actions";
+  const total = document.createElement("td");
+  total.className = "total-cell";
+  const totalNumber = document.createElement("span");
+  totalNumber.className = "total-score";
+  totalNumber.textContent = "100";
+  total.append(totalNumber);
+  const updateDraftTotal = () => {
+    totalNumber.textContent = String(scoreValue(easeScore.value) + scoreValue(disneyScore.value));
+  };
+  easeScore.addEventListener("input", updateDraftTotal);
+  disneyScore.addEventListener("input", updateDraftTotal);
 
-    const cancelButton = document.createElement("button");
-    cancelButton.className = "cancel-delete";
-    cancelButton.type = "button";
-    cancelButton.textContent = "Cancel";
-    cancelButton.addEventListener("click", () => {
-      confirmDeleteId = "";
-      render();
-    });
+  const why = document.createElement("td");
+  const whyInput = document.createElement("textarea");
+  whyInput.className = "why-input";
+  whyInput.dataset.new = "why";
+  whyInput.placeholder = "why it helps";
+  whyInput.addEventListener("input", () => autosize(whyInput));
+  why.append(whyInput);
 
-    const confirmButton = document.createElement("button");
-    confirmButton.className = "confirm-delete";
-    confirmButton.type = "button";
-    confirmButton.textContent = "Delete";
-    confirmButton.addEventListener("click", async () => {
-      const response = await fetch(`/api/todo/items/${item.id}`, { method: "DELETE" });
-      if (response.ok) {
-        items = items.filter((entry) => entry.id !== item.id);
-        openMenuId = "";
-        confirmDeleteId = "";
-        render();
-      }
-    });
-
-    confirmActions.append(cancelButton, confirmButton);
-    menu.append(message, confirmActions);
-  } else {
-    const deleteButton = document.createElement("button");
-    deleteButton.className = "menu-delete";
-    deleteButton.type = "button";
-    deleteButton.textContent = "Delete";
-    deleteButton.addEventListener("click", () => {
-      confirmDeleteId = item.id;
-      render();
-    });
-    menu.append(deleteButton);
-  }
-
-  actionWrap.append(menu);
-  return actionWrap;
+  row.append(details, date, time, ease, disney, total, why);
+  requestAnimationFrame(() => {
+    autosize(task);
+    task.focus();
+  });
+  return row;
 }
 
-function render(options = {}) {
-  const rows = items.map(buildRow);
-  rows.push(draftOpen ? buildNewRow() : buildNewRowButton());
+function buildNewRowButton() {
+  const row = document.createElement("tr");
+  row.className = "new-row";
+  const cell = document.createElement("td");
+  cell.colSpan = 7;
+  const button = document.createElement("button");
+  button.className = "new-row-button";
+  button.type = "button";
+  button.textContent = "+ new row";
+  button.addEventListener("click", () => {
+    draftOpen = true;
+    render();
+  });
+  cell.append(button);
+  row.append(cell);
+  return row;
+}
+
+function render() {
+  const sorted = [...items].sort((a, b) => totalScore(b) - totalScore(a));
+  const rows = sorted.map(buildRow);
+  rows.push(draftOpen ? buildDraftRow() : buildNewRowButton());
+  if (!rows.length) {
+    rows.push(buildNewRowButton());
+  }
   itemsEl.replaceChildren(...rows);
-  if (options.focusNew) {
-    itemsEl.querySelector(".new-item-input")?.focus();
-  }
-  if (options.focusNewButton) {
-    itemsEl.querySelector(".new-row-button")?.focus();
-  }
 }
 
 async function loadItems() {
@@ -437,9 +419,77 @@ async function loadItems() {
     window.location.href = "/";
     return;
   }
+  if (!response.ok) {
+    setStatus("load failed", "bad");
+    return;
+  }
   const payload = await response.json();
   items = payload.items || [];
+  aiConfigured = Boolean(payload.aiConfigured);
+  modelName = payload.model || "";
   render();
+  setStatus(aiConfigured ? `ready · ${modelName}` : "AI key missing", aiConfigured ? "" : "bad");
 }
+
+async function analyzeTranscript() {
+  const transcript = transcriptInput.value.trim();
+  if (!transcript) {
+    transcriptInput.focus();
+    setStatus("paste or upload a transcript", "bad");
+    return;
+  }
+  analyzeButton.disabled = true;
+  setStatus("analyzing");
+  try {
+    const response = await fetch("/api/todo/transcripts/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: transcriptName.value.trim(), transcript }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setStatus(payload.detail || "analysis failed", "bad");
+      return;
+    }
+    items = payload.allItems || items;
+    render();
+    transcriptInput.value = "";
+    transcriptName.value = "";
+    transcriptFile.value = "";
+    const count = payload.items?.length || 0;
+    setStatus(count ? `saved ${count} rows` : "saved transcript, no supported todos found");
+  } finally {
+    analyzeButton.disabled = false;
+  }
+}
+
+transcriptFile.addEventListener("change", async () => {
+  const file = transcriptFile.files?.[0];
+  if (!file) return;
+  const text = await file.text();
+  transcriptInput.value = text;
+  if (!transcriptName.value.trim()) transcriptName.value = file.name.replace(/\.[^.]+$/, "");
+  setStatus(`${file.name} loaded`);
+});
+
+analyzeButton.addEventListener("click", analyzeTranscript);
+clearTranscript.addEventListener("click", () => {
+  transcriptInput.value = "";
+  transcriptName.value = "";
+  transcriptFile.value = "";
+  setStatus("cleared");
+});
+
+logoutButton.addEventListener("click", async () => {
+  await fetch("/api/logout", { method: "POST" });
+  window.location.href = "/";
+});
+
+document.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && document.activeElement === transcriptInput) {
+    event.preventDefault();
+    analyzeTranscript();
+  }
+});
 
 loadItems();
