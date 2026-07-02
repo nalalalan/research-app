@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
@@ -11,8 +12,13 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import LETTER
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -166,6 +172,8 @@ def _compact_transcript(transcript: dict[str, Any]) -> dict[str, Any]:
     payload = {
         "id": str(transcript.get("id", "")),
         "name": _safe_text(transcript.get("name"), 180),
+        "meetingDateTime": _safe_text(transcript.get("meetingDateTime"), 120),
+        "metadataBasis": _safe_text(transcript.get("metadataBasis"), 400),
         "createdAt": str(transcript.get("createdAt", "")),
         "characterCount": int(transcript.get("characterCount") or 0),
         "chunkCount": int(transcript.get("chunkCount") or 0),
@@ -173,6 +181,7 @@ def _compact_transcript(transcript: dict[str, Any]) -> dict[str, Any]:
         "model": _safe_text(transcript.get("model"), 80),
         "status": _safe_text(transcript.get("status"), 40),
         "error": _safe_text(transcript.get("error"), 400),
+        "pdfUrl": f"/api/todo/transcripts/{transcript.get('id', '')}/pdf",
     }
     return payload
 
@@ -199,6 +208,11 @@ def _chunk_transcript(text: str) -> list[str]:
     return chunks
 
 
+def _slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug[:80] or "transcript"
+
+
 def _extract_response_text(data: dict[str, Any]) -> str:
     if isinstance(data.get("output_text"), str):
         return data["output_text"]
@@ -209,6 +223,187 @@ def _extract_response_text(data: dict[str, Any]) -> str:
             if content.get("type") == "output_text" and isinstance(content.get("text"), str):
                 return content["text"]
     return ""
+
+
+async def _infer_transcript_metadata(text: str) -> dict[str, str]:
+    excerpt = text[:16000]
+    fallback = {
+        "title": f"meeting {time.strftime('%Y-%m-%d')}",
+        "dateTime": "date not stated",
+        "basis": "",
+        "confidence": "low",
+    }
+    if not OPENAI_API_KEY:
+        return fallback
+
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["title", "dateTime", "basis", "confidence"],
+        "properties": {
+            "title": {"type": "string"},
+            "dateTime": {"type": "string"},
+            "basis": {"type": "string"},
+            "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        },
+    }
+    request_body = {
+        "model": OPENAI_MODEL,
+        "store": False,
+        "reasoning": {"effort": "low"},
+        "max_output_tokens": 900,
+        "instructions": "\n".join(
+            [
+                "Infer compact metadata for a meeting transcript from the transcript text only.",
+                "Do not use filename, upload time, or outside knowledge.",
+                "title should be a short readable meeting title, 3-9 words, based on the actual topic.",
+                "dateTime should be the meeting date/time if explicitly stated or strongly implied by the transcript. If not stated, write 'date not stated'.",
+                "basis must be an exact short quote or phrase from the transcript that supports the title/date. If no date is stated, basis may support only the title.",
+                "confidence is high only when both title and date/time are clearly supported. Use medium for a clear topic but unstated date. Use low for weak topic evidence.",
+                "Return JSON only through the schema.",
+            ]
+        ),
+        "input": [{"role": "user", "content": [{"type": "input_text", "text": excerpt}]}],
+        "text": {"format": {"type": "json_schema", "name": "todo_transcript_metadata", "strict": True, "schema": schema}},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=15.0)) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/responses",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                json=request_body,
+            )
+    except httpx.HTTPError:
+        return fallback
+    if response.status_code >= 400:
+        return fallback
+    try:
+        payload = json.loads(_extract_response_text(response.json()))
+    except Exception:
+        return fallback
+    title = _safe_text(payload.get("title"), 180) or fallback["title"]
+    date_time = _safe_text(payload.get("dateTime"), 120) or "date not stated"
+    basis = _safe_text(payload.get("basis"), 400)
+    confidence = _safe_text(payload.get("confidence"), 20) or "low"
+    return {"title": title, "dateTime": date_time, "basis": basis, "confidence": confidence}
+
+
+def _split_long_text(text: str, size: int = 1400) -> list[str]:
+    parts: list[str] = []
+    remaining = text.strip()
+    while len(remaining) > size:
+        split_at = max(remaining.rfind(". ", 0, size), remaining.rfind(" ", 0, size))
+        if split_at < int(size * 0.55):
+            split_at = size
+        parts.append(remaining[:split_at].strip())
+        remaining = remaining[split_at:].strip()
+    if remaining:
+        parts.append(remaining)
+    return parts
+
+
+def _transcript_story_blocks(text: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
+    story: list[Any] = []
+    speaker_pattern = re.compile(r"^([A-Za-z][A-Za-z0-9 ._'\-]{0,54}):\s*(.*)$")
+    timestamp_pattern = re.compile(r"^(\[?\d{1,2}:\d{2}(?::\d{2})?\]?|\d{1,2}:\d{2}\s*(?:AM|PM|am|pm))\s+(.+)$")
+    for raw_block in re.split(r"\n{2,}", text.strip()):
+        block = raw_block.strip()
+        if not block:
+            continue
+        for raw_line in block.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            speaker = speaker_pattern.match(line)
+            timestamp = timestamp_pattern.match(line)
+            if speaker:
+                name = speaker.group(1).strip()
+                spoken = speaker.group(2).strip()
+                for index, part in enumerate(_split_long_text(spoken or "")):
+                    prefix = f"<b>{name}</b> " if index == 0 else ""
+                    story.append(Paragraph(prefix + _xml_escape(part), styles["transcript"]))
+                    story.append(Spacer(1, 0.04 * inch))
+            elif timestamp:
+                stamp = timestamp.group(1).strip()
+                spoken = timestamp.group(2).strip()
+                story.append(Paragraph(f"<b>{_xml_escape(stamp)}</b> {_xml_escape(spoken)}", styles["transcript"]))
+                story.append(Spacer(1, 0.04 * inch))
+            else:
+                for part in _split_long_text(line):
+                    story.append(Paragraph(_xml_escape(part), styles["transcript"]))
+                    story.append(Spacer(1, 0.04 * inch))
+        story.append(Spacer(1, 0.08 * inch))
+    return story
+
+
+def _xml_escape(text: str) -> str:
+    return (
+        str(text)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _render_transcript_pdf(transcript: dict[str, Any]) -> bytes:
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=LETTER,
+        leftMargin=0.72 * inch,
+        rightMargin=0.72 * inch,
+        topMargin=0.68 * inch,
+        bottomMargin=0.68 * inch,
+        title=_safe_text(transcript.get("name"), 180) or "transcript",
+    )
+    base = getSampleStyleSheet()
+    styles = {
+        "title": ParagraphStyle(
+            "TodoTranscriptTitle",
+            parent=base["Title"],
+            fontName="Helvetica-Bold",
+            fontSize=18,
+            leading=22,
+            textColor=colors.HexColor("#1d2322"),
+            spaceAfter=8,
+        ),
+        "meta": ParagraphStyle(
+            "TodoTranscriptMeta",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            fontSize=9.5,
+            leading=13,
+            textColor=colors.HexColor("#66706e"),
+            spaceAfter=10,
+        ),
+        "transcript": ParagraphStyle(
+            "TodoTranscriptBody",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            fontSize=10.2,
+            leading=14.5,
+            textColor=colors.HexColor("#202827"),
+            spaceAfter=0,
+        ),
+    }
+    title = _safe_text(transcript.get("name"), 180) or "transcript"
+    meeting_time = _safe_text(transcript.get("meetingDateTime"), 120) or "date not stated"
+    created = _safe_text(transcript.get("createdAt"), 80)
+    basis = _safe_text(transcript.get("metadataBasis"), 400)
+    meta_parts = [meeting_time, f"{int(transcript.get('characterCount') or 0):,} characters"]
+    if created:
+        meta_parts.append(f"uploaded {created}")
+    story: list[Any] = [
+        Paragraph(_xml_escape(title), styles["title"]),
+        Paragraph(_xml_escape(" / ".join(meta_parts)), styles["meta"]),
+    ]
+    if basis:
+        story.extend([Paragraph(_xml_escape(basis), styles["meta"]), Spacer(1, 0.08 * inch)])
+    story.extend(_transcript_story_blocks(str(transcript.get("text", "")), styles))
+    doc.build(story)
+    return buffer.getvalue()
+
 
 
 def _candidate_key(candidate: dict[str, Any]) -> str:
@@ -411,18 +606,7 @@ async def _analyze_transcript(transcript_id: str, name: str, text: str) -> list[
 
 
 class AnalyzeTranscriptBody(BaseModel):
-    name: str = Field(default="", max_length=180)
     transcript: str = Field(min_length=1, max_length=300000)
-
-
-class CreateItemBody(BaseModel):
-    task: str = Field(min_length=1, max_length=800)
-    details: str = Field(default="", max_length=6000)
-    dateAdded: str = Field(default="", max_length=40)
-    timeEstimate: str = Field(default="", max_length=80)
-    easeScore: int = Field(default=0, ge=0, le=100)
-    disneyScore: int = Field(default=0, ge=0, le=100)
-    why: str = Field(default="", max_length=1200)
 
 
 class UpdateItemBody(BaseModel):
@@ -488,9 +672,13 @@ async def analyze_transcript(body: AnalyzeTranscriptBody) -> dict[str, Any]:
 
     state = _load_state()
     transcript_id = secrets.token_hex(8)
+    metadata = await _infer_transcript_metadata(transcript_text)
     transcript = {
         "id": transcript_id,
-        "name": body.name.strip() or f"meeting {time.strftime('%Y-%m-%d')}",
+        "name": metadata["title"],
+        "meetingDateTime": metadata["dateTime"],
+        "metadataBasis": metadata["basis"],
+        "metadataConfidence": metadata["confidence"],
         "text": transcript_text,
         "createdAt": _now(),
         "characterCount": len(transcript_text),
@@ -528,35 +716,9 @@ async def analyze_transcript(body: AnalyzeTranscriptBody) -> dict[str, Any]:
         "transcript": _compact_transcript(transcript | {"status": "complete", "itemCount": len(new_items)}),
         "items": [_compact_item(item) for item in new_items],
         "allItems": [_compact_item(item) for item in state.get("items", [])],
+        "allTranscripts": [_compact_transcript(entry) for entry in state.get("transcripts", [])],
         "updatedAt": state["updatedAt"],
     }
-
-
-@app.post("/api/todo/items")
-async def create_item(body: CreateItemBody) -> dict[str, Any]:
-    state = _load_state()
-    now = _now()
-    item = {
-        "id": secrets.token_hex(8),
-        "task": body.task.strip(),
-        "details": body.details.strip(),
-        "dateAdded": body.dateAdded.strip() or _today(),
-        "timeEstimate": body.timeEstimate.strip(),
-        "easeScore": _score(body.easeScore),
-        "disneyScore": _score(body.disneyScore),
-        "why": body.why.strip(),
-        "sourceTranscriptId": "",
-        "sourceSpeaker": "",
-        "evidence": [],
-        "confidence": "manual",
-        "state": "active",
-        "openQuestions": [],
-        "createdAt": now,
-        "updatedAt": now,
-    }
-    state.setdefault("items", []).append(item)
-    _save_state(state)
-    return {"item": _compact_item(item), "updatedAt": state["updatedAt"]}
 
 
 @app.patch("/api/todo/items/order")
@@ -606,6 +768,21 @@ async def delete_item(item_id: str) -> dict[str, Any]:
     return {"status": "ok", "updatedAt": state["updatedAt"]}
 
 
+@app.get("/api/todo/transcripts/{transcript_id}/pdf")
+async def transcript_pdf(transcript_id: str) -> Response:
+    state = _load_state()
+    for transcript in state.get("transcripts", []):
+        if str(transcript.get("id")) == transcript_id:
+            pdf = _render_transcript_pdf(transcript)
+            filename = f"{_slug(_safe_text(transcript.get('name'), 120))}.pdf"
+            return Response(
+                pdf,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'inline; filename="{filename}"'},
+            )
+    raise HTTPException(status_code=404, detail="not found")
+
+
 @app.get("/api/todo/summary")
 async def todo_summary() -> dict[str, Any]:
     state = _load_state()
@@ -623,7 +800,7 @@ async def todo_summary() -> dict[str, Any]:
         "updatedAt": state.get("updatedAt"),
         "aiConfigured": bool(OPENAI_API_KEY),
         "model": OPENAI_MODEL if OPENAI_API_KEY else "",
-        "visibility": "private_rows_public_counts_only",
+        "visibility": "public_rows_and_transcript_pdfs",
     }
 
 

@@ -1,6 +1,6 @@
 const itemsEl = document.querySelector("#items");
+const transcriptsEl = document.querySelector("#transcripts");
 const transcriptInput = document.querySelector("#transcriptInput");
-const transcriptName = document.querySelector("#transcriptName");
 const transcriptFile = document.querySelector("#transcriptFile");
 const analyzeButton = document.querySelector("#analyzeButton");
 const clearTranscript = document.querySelector("#clearTranscript");
@@ -9,9 +9,9 @@ const intakeStatus = document.querySelector("#intakeStatus");
 const saveTimers = new Map();
 
 let items = [];
+let transcripts = [];
 let aiConfigured = false;
 let modelName = "";
-let draftOpen = false;
 let confirmDeleteId = "";
 
 function setStatus(text, tone = "") {
@@ -33,6 +33,33 @@ function totalScore(item) {
   return scoreValue(item.easeScore) + scoreValue(item.disneyScore);
 }
 
+function formatDate(value) {
+  const text = safeText(value);
+  if (!text) return "";
+  return text.slice(0, 10);
+}
+
+function todoBody(item) {
+  return [item.task, item.details, item.why]
+    .map((part) => safeText(part).trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function splitTodoBody(value) {
+  const lines = safeText(value)
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const task = lines.shift() || "";
+  return {
+    task,
+    details: lines.join("\n"),
+    why: "",
+  };
+}
+
 function scheduleSave(id, patch) {
   const existing = saveTimers.get(id);
   if (existing) clearTimeout(existing);
@@ -45,18 +72,14 @@ function scheduleSave(id, patch) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-      if (!response.ok) {
-        setStatus("save failed", "bad");
-        return;
-      }
-      setStatus("saved");
+      setStatus(response.ok ? "saved" : "save failed", response.ok ? "" : "bad");
     }, 450),
   );
 }
 
 function autosize(textarea) {
   textarea.style.height = "0px";
-  textarea.style.height = `${Math.min(220, Math.max(36, textarea.scrollHeight))}px`;
+  textarea.style.height = `${Math.min(260, Math.max(34, textarea.scrollHeight))}px`;
 }
 
 function makeInput(item, field, className, multiline = false) {
@@ -101,7 +124,7 @@ function makeStateSelect(item) {
 async function deleteItem(item) {
   if (confirmDeleteId !== item.id) {
     confirmDeleteId = item.id;
-    render();
+    renderItems();
     return;
   }
   const response = await fetch(`/api/todo/items/${item.id}`, { method: "DELETE" });
@@ -111,13 +134,13 @@ async function deleteItem(item) {
   }
   items = items.filter((entry) => entry.id !== item.id);
   confirmDeleteId = "";
-  render();
+  renderItems();
   setStatus("deleted");
 }
 
-function buildDetailsCell(item) {
+function buildTodoCell(item) {
   const cell = document.createElement("td");
-  cell.className = "details-cell";
+  cell.className = "todo-cell";
 
   const top = document.createElement("div");
   top.className = "row-top";
@@ -126,20 +149,32 @@ function buildDetailsCell(item) {
   const source = document.createElement("span");
   source.className = "source-chip";
   const sourceParts = [item.sourceSpeaker, item.confidence].filter(Boolean);
-  source.textContent = sourceParts.join(" · ") || "manual";
+  source.textContent = sourceParts.join(" / ") || "transcript";
   top.append(source);
 
   const deleteButton = document.createElement("button");
   deleteButton.className = confirmDeleteId === item.id ? "delete-row is-confirming" : "delete-row";
   deleteButton.type = "button";
   deleteButton.setAttribute("aria-label", confirmDeleteId === item.id ? "confirm delete row" : "delete row");
-  deleteButton.textContent = confirmDeleteId === item.id ? "delete?" : "×";
+  deleteButton.textContent = confirmDeleteId === item.id ? "delete?" : "x";
   deleteButton.addEventListener("click", () => deleteItem(item));
   top.append(deleteButton);
 
-  const task = makeInput(item, "task", "task-input", true);
-  const details = makeInput(item, "details", "details-input", true);
-  cell.append(top, task, details);
+  const todo = document.createElement("textarea");
+  todo.className = "todo-input";
+  todo.value = todoBody(item);
+  todo.spellcheck = true;
+  todo.setAttribute("aria-label", "todo");
+  todo.addEventListener("input", () => {
+    const patch = splitTodoBody(todo.value);
+    item.task = patch.task;
+    item.details = patch.details;
+    item.why = patch.why;
+    autosize(todo);
+    scheduleSave(item.id, patch);
+  });
+  requestAnimationFrame(() => autosize(todo));
+  cell.append(top, todo);
 
   if (item.evidence?.length) {
     const quote = document.createElement("blockquote");
@@ -157,24 +192,23 @@ function buildDetailsCell(item) {
   return cell;
 }
 
-function buildDateCell(item) {
+function buildDateTimeCell(item) {
   const cell = document.createElement("td");
-  const input = document.createElement("input");
-  input.className = "date-input";
-  input.type = "date";
-  input.value = safeText(item.dateAdded).slice(0, 10);
-  input.setAttribute("aria-label", "date added");
-  input.addEventListener("input", () => {
-    item.dateAdded = input.value;
-    scheduleSave(item.id, { dateAdded: input.value });
-  });
-  cell.append(input);
-  return cell;
-}
+  cell.className = "date-time-cell";
 
-function buildTimeCell(item) {
-  const cell = document.createElement("td");
-  cell.append(makeInput(item, "timeEstimate", "time-input"));
+  const date = document.createElement("input");
+  date.className = "date-input";
+  date.type = "date";
+  date.value = formatDate(item.dateAdded);
+  date.setAttribute("aria-label", "date");
+  date.addEventListener("input", () => {
+    item.dateAdded = date.value;
+    scheduleSave(item.id, { dateAdded: date.value });
+  });
+
+  const time = makeInput(item, "timeEstimate", "time-input");
+  time.placeholder = "time";
+  cell.append(date, time);
   return cell;
 }
 
@@ -232,184 +266,82 @@ function buildTotalCell(item) {
   return cell;
 }
 
-function buildWhyCell(item) {
-  const cell = document.createElement("td");
-  cell.className = "why-cell";
-  cell.append(makeInput(item, "why", "why-input", true));
-  return cell;
-}
-
 function buildRow(item) {
   const row = document.createElement("tr");
   row.className = `todo-row state-${item.state || "review"}`;
   row.dataset.id = item.id;
   row.append(
-    buildDetailsCell(item),
-    buildDateCell(item),
-    buildTimeCell(item),
+    buildTodoCell(item),
+    buildDateTimeCell(item),
     buildScoreCell(item, "easeScore", "ease score"),
     buildScoreCell(item, "disneyScore", "disney score"),
     buildTotalCell(item),
-    buildWhyCell(item),
   );
   return row;
 }
 
-async function createManualItem(row) {
-  const task = row.querySelector("[data-new='task']").value.trim();
-  if (!task) {
-    row.querySelector("[data-new='task']").focus();
+function renderItems() {
+  const sorted = [...items].sort((a, b) => totalScore(b) - totalScore(a));
+  if (!sorted.length) {
+    const row = document.createElement("tr");
+    row.className = "empty-row";
+    const cell = document.createElement("td");
+    cell.colSpan = 5;
+    cell.textContent = "no todo rows yet";
+    row.append(cell);
+    itemsEl.replaceChildren(row);
     return;
   }
-  const payload = {
-    task,
-    details: row.querySelector("[data-new='details']").value.trim(),
-    dateAdded: row.querySelector("[data-new='date']").value,
-    timeEstimate: row.querySelector("[data-new='time']").value.trim(),
-    easeScore: scoreValue(row.querySelector("[data-new='ease']").value),
-    disneyScore: scoreValue(row.querySelector("[data-new='disney']").value),
-    why: row.querySelector("[data-new='why']").value.trim(),
-  };
-  const response = await fetch("/api/todo/items", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    setStatus("row save failed", "bad");
+  itemsEl.replaceChildren(...sorted.map(buildRow));
+}
+
+function renderTranscripts() {
+  if (!transcripts.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-transcripts";
+    empty.textContent = "no transcriptions yet";
+    transcriptsEl.replaceChildren(empty);
     return;
   }
-  const data = await response.json();
-  items.push(data.item);
-  draftOpen = false;
-  render();
-  setStatus("row saved");
-}
+  const cards = [...transcripts].reverse().map((entry) => {
+    const card = document.createElement("article");
+    card.className = "transcript-card";
 
-function buildDraftRow() {
-  const row = document.createElement("tr");
-  row.className = "draft-row";
+    const title = document.createElement("div");
+    title.className = "transcript-title";
+    title.textContent = entry.name || "transcription";
 
-  const details = document.createElement("td");
-  const task = document.createElement("textarea");
-  task.className = "task-input";
-  task.placeholder = "todo item";
-  task.dataset.new = "task";
-  task.addEventListener("input", () => autosize(task));
+    const meta = document.createElement("div");
+    meta.className = "transcript-meta";
+    const parts = [
+      entry.meetingDateTime || "date not stated",
+      `${entry.itemCount || 0} rows`,
+      `${(entry.characterCount || 0).toLocaleString()} chars`,
+    ];
+    meta.textContent = parts.join(" / ");
 
-  const context = document.createElement("textarea");
-  context.className = "details-input";
-  context.placeholder = "context";
-  context.dataset.new = "details";
-  context.addEventListener("input", () => autosize(context));
+    const basis = document.createElement("div");
+    basis.className = "transcript-basis";
+    basis.textContent = entry.metadataBasis || "";
 
-  const actions = document.createElement("div");
-  actions.className = "draft-actions";
-  const save = document.createElement("button");
-  save.type = "button";
-  save.className = "primary-button small";
-  save.textContent = "save";
-  save.addEventListener("click", () => createManualItem(row));
-  const cancel = document.createElement("button");
-  cancel.type = "button";
-  cancel.className = "quiet-button small";
-  cancel.textContent = "cancel";
-  cancel.addEventListener("click", () => {
-    draftOpen = false;
-    render();
+    const link = document.createElement("a");
+    link.className = "pdf-link";
+    link.href = entry.pdfUrl || `/api/todo/transcripts/${entry.id}/pdf`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = "open pdf";
+
+    card.append(title, meta);
+    if (basis.textContent) card.append(basis);
+    card.append(link);
+    return card;
   });
-  actions.append(save, cancel);
-  details.append(task, context, actions);
-
-  const date = document.createElement("td");
-  const dateInput = document.createElement("input");
-  dateInput.className = "date-input";
-  dateInput.type = "date";
-  dateInput.dataset.new = "date";
-  dateInput.value = new Date().toISOString().slice(0, 10);
-  date.append(dateInput);
-
-  const time = document.createElement("td");
-  const timeInput = document.createElement("input");
-  timeInput.className = "time-input";
-  timeInput.placeholder = "30 min";
-  timeInput.dataset.new = "time";
-  time.append(timeInput);
-
-  const ease = document.createElement("td");
-  const easeScore = document.createElement("input");
-  easeScore.className = "score-input";
-  easeScore.type = "number";
-  easeScore.min = "0";
-  easeScore.max = "100";
-  easeScore.value = "50";
-  easeScore.dataset.new = "ease";
-  ease.append(easeScore);
-
-  const disney = document.createElement("td");
-  const disneyScore = document.createElement("input");
-  disneyScore.className = "score-input";
-  disneyScore.type = "number";
-  disneyScore.min = "0";
-  disneyScore.max = "100";
-  disneyScore.value = "50";
-  disneyScore.dataset.new = "disney";
-  disney.append(disneyScore);
-
-  const total = document.createElement("td");
-  total.className = "total-cell";
-  const totalNumber = document.createElement("span");
-  totalNumber.className = "total-score";
-  totalNumber.textContent = "100";
-  total.append(totalNumber);
-  const updateDraftTotal = () => {
-    totalNumber.textContent = String(scoreValue(easeScore.value) + scoreValue(disneyScore.value));
-  };
-  easeScore.addEventListener("input", updateDraftTotal);
-  disneyScore.addEventListener("input", updateDraftTotal);
-
-  const why = document.createElement("td");
-  const whyInput = document.createElement("textarea");
-  whyInput.className = "why-input";
-  whyInput.dataset.new = "why";
-  whyInput.placeholder = "why it helps";
-  whyInput.addEventListener("input", () => autosize(whyInput));
-  why.append(whyInput);
-
-  row.append(details, date, time, ease, disney, total, why);
-  requestAnimationFrame(() => {
-    autosize(task);
-    task.focus();
-  });
-  return row;
-}
-
-function buildNewRowButton() {
-  const row = document.createElement("tr");
-  row.className = "new-row";
-  const cell = document.createElement("td");
-  cell.colSpan = 7;
-  const button = document.createElement("button");
-  button.className = "new-row-button";
-  button.type = "button";
-  button.textContent = "+ new row";
-  button.addEventListener("click", () => {
-    draftOpen = true;
-    render();
-  });
-  cell.append(button);
-  row.append(cell);
-  return row;
+  transcriptsEl.replaceChildren(...cards);
 }
 
 function render() {
-  const sorted = [...items].sort((a, b) => totalScore(b) - totalScore(a));
-  const rows = sorted.map(buildRow);
-  rows.push(draftOpen ? buildDraftRow() : buildNewRowButton());
-  if (!rows.length) {
-    rows.push(buildNewRowButton());
-  }
-  itemsEl.replaceChildren(...rows);
+  renderItems();
+  renderTranscripts();
 }
 
 async function loadItems() {
@@ -420,17 +352,18 @@ async function loadItems() {
   }
   const payload = await response.json();
   items = payload.items || [];
+  transcripts = payload.transcripts || [];
   aiConfigured = Boolean(payload.aiConfigured);
   modelName = payload.model || "";
   render();
-  setStatus(aiConfigured ? `ready · ${modelName}` : "AI key missing", aiConfigured ? "" : "bad");
+  setStatus(aiConfigured ? `ready / ${modelName}` : "AI key missing", aiConfigured ? "" : "bad");
 }
 
 async function analyzeTranscript() {
   const transcript = transcriptInput.value.trim();
   if (!transcript) {
     transcriptInput.focus();
-    setStatus("paste or upload a transcript", "bad");
+    setStatus("paste or upload a transcription", "bad");
     return;
   }
   analyzeButton.disabled = true;
@@ -439,7 +372,7 @@ async function analyzeTranscript() {
     const response = await fetch("/api/todo/transcripts/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: transcriptName.value.trim(), transcript }),
+      body: JSON.stringify({ transcript }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -447,12 +380,12 @@ async function analyzeTranscript() {
       return;
     }
     items = payload.allItems || items;
+    transcripts = payload.allTranscripts || transcripts;
     render();
     transcriptInput.value = "";
-    transcriptName.value = "";
     transcriptFile.value = "";
     const count = payload.items?.length || 0;
-    setStatus(count ? `saved ${count} rows` : "saved transcript, no supported todos found");
+    setStatus(count ? `added ${count} rows` : "saved transcription, no supported todos found");
   } finally {
     analyzeButton.disabled = false;
   }
@@ -461,16 +394,13 @@ async function analyzeTranscript() {
 transcriptFile.addEventListener("change", async () => {
   const file = transcriptFile.files?.[0];
   if (!file) return;
-  const text = await file.text();
-  transcriptInput.value = text;
-  if (!transcriptName.value.trim()) transcriptName.value = file.name.replace(/\.[^.]+$/, "");
+  transcriptInput.value = await file.text();
   setStatus(`${file.name} loaded`);
 });
 
 analyzeButton.addEventListener("click", analyzeTranscript);
 clearTranscript.addEventListener("click", () => {
   transcriptInput.value = "";
-  transcriptName.value = "";
   transcriptFile.value = "";
   setStatus("cleared");
 });

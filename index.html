@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>todo.aolabs.io</title>
-  <link rel="icon" href="/favicon.svg">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="/favicon.svg?v=20260702-brief-stack">
+  <link rel="stylesheet" href="/styles.css?v=20260702-archive">
 </head>
 <body>
   <header class="topbar">
@@ -14,24 +14,23 @@
         <span></span><span></span><span></span><span></span>
       </span>
     </a>
-    <img class="app-icon" src="/favicon.svg" alt="">
+    <img class="app-icon" src="/favicon.svg?v=20260702-brief-stack" alt="">
     <h1>todo</h1>
   </header>
 
   <main class="shell">
     <section class="intake-shell" aria-label="meeting transcript intake">
-      <div class="intake-head">
-        <input id="transcriptName" class="meeting-name" autocomplete="off" placeholder="meeting name or date">
-        <label class="file-button">
-          <input id="transcriptFile" type="file" accept=".txt,.md,.vtt,.srt,text/plain,text/markdown">
-          upload
-        </label>
-        <button id="analyzeButton" class="primary-button" type="button">analyze</button>
-      </div>
-      <textarea id="transcriptInput" class="transcript-input" spellcheck="true" placeholder="paste meeting transcript"></textarea>
+      <textarea id="transcriptInput" class="transcript-input" spellcheck="true" placeholder="paste meeting transcription"></textarea>
       <div class="intake-foot">
         <span id="intakeStatus">ready</span>
-        <button id="clearTranscript" class="quiet-button" type="button">clear</button>
+        <div class="intake-actions">
+          <label class="file-button">
+            <input id="transcriptFile" type="file" accept=".txt,.md,.vtt,.srt,text/plain,text/markdown">
+            upload
+          </label>
+          <button id="clearTranscript" class="quiet-button" type="button">clear</button>
+          <button id="analyzeButton" class="primary-button" type="button">analyze</button>
+        </div>
       </div>
     </section>
 
@@ -39,35 +38,40 @@
       <div class="table-scroll">
         <table>
           <colgroup>
-            <col class="col-details">
-            <col class="col-date">
-            <col class="col-time">
+            <col class="col-todo">
+            <col class="col-date-time">
             <col class="col-ease">
             <col class="col-disney">
             <col class="col-total">
-            <col class="col-why">
           </colgroup>
           <thead>
             <tr>
-              <th>todo + context</th>
-              <th>date added</th>
-              <th>time</th>
+              <th>todo</th>
+              <th>date / time</th>
               <th>ease /100</th>
               <th>disney /100</th>
               <th>total</th>
-              <th>why</th>
             </tr>
           </thead>
           <tbody id="items">
             <tr class="loading-row">
-              <td colspan="7">loading</td>
+              <td colspan="5">loading</td>
             </tr>
           </tbody>
         </table>
       </div>
     </section>
+
+    <section class="transcript-shell" aria-label="transcription PDFs">
+      <div class="section-head">
+        <h2>transcriptions</h2>
+      </div>
+      <div id="transcripts" class="transcript-list">
+        <div class="empty-transcripts">no transcriptions yet</div>
+      </div>
+    </section>
   </main>
 
-  <script src="/app.js"></script>
+  <script src="/app.js?v=20260702-archive"></script>
 </body>
 </html>

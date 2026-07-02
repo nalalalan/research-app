@@ -5,11 +5,12 @@ Meeting-transcript todo extractor.
 Shape:
 
 - paste or upload a long meeting transcript
-- AI extracts only transcript-supported todo rows
+- AI infers the transcript title/date-time from the transcript text
+- AI extracts only transcript-supported todo rows; rows are added automatically after analysis
 - rows stay editable and reviewable
-- table columns: todo/context, date added, time estimate, ease /100, Disney /100, total, why
+- table columns: todo, date / time, ease /100, Disney /100, total
 - total score is computed as `easeScore + disneyScore`
-- raw transcript text is stored server-side and is not exposed through public read endpoints
+- raw transcript text is stored server-side and exposed through readable generated PDFs under the transcription archive
 - older archived Todo rows are preserved under `legacyItems` and hidden from the new transcript table
 
 Correctness guardrails:
@@ -23,11 +24,11 @@ Runtime:
 
 - `GET /` serves the app.
 - `GET /health` and `GET /api/health` expose app/AI readiness without secrets.
-- `GET /api/todo/items` returns rows and transcript summaries.
+- `GET /api/todo/items` returns rows and transcript summaries with PDF links.
 - `POST /api/todo/transcripts/analyze` stores a transcript and appends AI-extracted rows.
-- `POST /api/todo/items` adds a manual row.
 - `PATCH /api/todo/items/{item_id}` edits row fields and review state.
 - `DELETE /api/todo/items/{item_id}` removes a row.
+- `GET /api/todo/transcripts/{transcript_id}/pdf` serves the formatted transcript PDF.
 - `GET /api/todo/summary` is public-safe JSON for Progress.
 
 Railway variables:
