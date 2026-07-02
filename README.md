@@ -11,6 +11,7 @@ Shape:
 - table columns: todo/context, date added, time estimate, ease /100, Disney /100, total, why
 - total score is computed as `easeScore + disneyScore`
 - raw transcripts are stored privately; public summary exposes counts only
+- older archived Todo rows are preserved under `legacyItems` and hidden from the new transcript table
 
 Correctness guardrails:
 

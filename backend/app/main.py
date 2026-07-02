@@ -29,6 +29,7 @@ MAX_TRANSCRIPT_CHARS = int(os.getenv("TODO_MAX_TRANSCRIPT_CHARS", "240000"))
 CHUNK_CHARS = int(os.getenv("TODO_CHUNK_CHARS", "28000"))
 CHUNK_OVERLAP_CHARS = int(os.getenv("TODO_CHUNK_OVERLAP_CHARS", "900"))
 MAX_ITEMS_PER_CHUNK = int(os.getenv("TODO_MAX_ITEMS_PER_CHUNK", "18"))
+STATE_SCHEMA = "transcript_todo_v1"
 
 
 def _state_path() -> Path:
@@ -52,7 +53,31 @@ def _today() -> str:
 
 
 def _default_state() -> dict[str, Any]:
-    return {"items": [], "transcripts": [], "updatedAt": _now()}
+    return {"schema": STATE_SCHEMA, "items": [], "transcripts": [], "legacyItems": [], "updatedAt": _now()}
+
+
+def _is_transcript_state(data: dict[str, Any]) -> bool:
+    if data.get("schema") == STATE_SCHEMA:
+        return True
+    if isinstance(data.get("transcripts"), list) and data["transcripts"]:
+        return True
+    items = data.get("items")
+    if not isinstance(items, list):
+        return False
+    transcript_keys = {"task", "details", "easeScore", "disneyScore", "sourceSpeaker", "evidenceQuote", "transcriptId"}
+    return any(isinstance(item, dict) and bool(transcript_keys.intersection(item.keys())) for item in items)
+
+
+def _migrate_legacy_state(data: dict[str, Any]) -> dict[str, Any]:
+    legacy_items = data.get("items") if isinstance(data.get("items"), list) else []
+    return {
+        "schema": STATE_SCHEMA,
+        "items": [],
+        "transcripts": [],
+        "legacyItems": legacy_items,
+        "migratedAt": _now(),
+        "updatedAt": data.get("updatedAt") or _now(),
+    }
 
 
 def _load_state() -> dict[str, Any]:
@@ -64,16 +89,23 @@ def _load_state() -> dict[str, Any]:
         return _default_state()
     if not isinstance(data, dict):
         return _default_state()
+    if not _is_transcript_state(data):
+        return _migrate_legacy_state(data)
+    data["schema"] = STATE_SCHEMA
     if not isinstance(data.get("items"), list):
         data["items"] = []
     if not isinstance(data.get("transcripts"), list):
         data["transcripts"] = []
+    if not isinstance(data.get("legacyItems"), list):
+        data["legacyItems"] = []
     data.setdefault("updatedAt", _now())
     return data
 
 
 def _save_state(state: dict[str, Any]) -> None:
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    state["schema"] = STATE_SCHEMA
+    state.setdefault("legacyItems", [])
     state["updatedAt"] = _now()
     STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
