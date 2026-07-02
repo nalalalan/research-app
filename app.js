@@ -3,6 +3,7 @@ const transcriptsEl = document.querySelector("#transcripts");
 const transcriptInput = document.querySelector("#transcriptInput");
 const analyzeButton = document.querySelector("#analyzeButton");
 const intakeStatus = document.querySelector("#intakeStatus");
+const todoCountEl = document.querySelector("#todoCount");
 const sortButtons = [...document.querySelectorAll(".sort-button")];
 
 const saveTimers = new Map();
@@ -13,6 +14,7 @@ let aiConfigured = false;
 let modelName = "";
 let confirmDeleteId = "";
 let confirmTranscriptDeleteId = "";
+let retryingTranscriptId = "";
 let sortState = { key: "", direction: "desc" };
 
 function setStatus(text, tone = "") {
@@ -32,6 +34,15 @@ function scoreValue(value) {
 
 function totalScore(item) {
   return scoreValue(item.easeScore) + scoreValue(item.disneyScore);
+}
+
+function todoCountLabel(count) {
+  const safeCount = Math.max(0, Number(count) || 0);
+  return `${safeCount} ${safeCount === 1 ? "todo" : "todos"}`;
+}
+
+function updateTodoCount() {
+  if (todoCountEl) todoCountEl.textContent = todoCountLabel(items.length);
 }
 
 function formatDate(value) {
@@ -155,7 +166,33 @@ async function deleteTranscript(entry) {
   confirmTranscriptDeleteId = "";
   render();
   const removed = payload.removedItems || 0;
-  setStatus(removed ? `deleted transcription and ${removed} rows` : "deleted transcription");
+  setStatus(removed ? `deleted transcription and ${todoCountLabel(removed)}` : "deleted transcription");
+}
+
+async function retryTranscript(entry) {
+  retryingTranscriptId = entry.id;
+  renderTranscripts();
+  setStatus("retrying analysis");
+  try {
+    const response = await fetch(`/api/todo/transcripts/${entry.id}/retry`, { method: "POST" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      await loadItems({ setReadyStatus: false });
+      setStatus(payload.detail || "analysis failed; saved transcription can be retried", "bad");
+      return;
+    }
+    items = payload.allItems || items;
+    transcripts = payload.allTranscripts || transcripts;
+    render();
+    const count = payload.items?.length || 0;
+    setStatus(count ? `added ${todoCountLabel(count)}` : "saved transcription, no supported todos found");
+  } catch {
+    await loadItems({ setReadyStatus: false });
+    setStatus("analysis failed; saved transcription can be retried", "bad");
+  } finally {
+    retryingTranscriptId = "";
+    renderTranscripts();
+  }
 }
 
 function buildTodoCell(item) {
@@ -325,6 +362,7 @@ function updateSortHeaders() {
 
 function renderItems() {
   updateSortHeaders();
+  updateTodoCount();
   const sorted = sortedItems();
   if (!sorted.length) {
     const row = document.createElement("tr");
@@ -358,18 +396,20 @@ function renderTranscripts() {
     const meta = document.createElement("div");
     meta.className = "transcript-meta";
     const statusText =
-      entry.status === "failed" ? "analysis failed" : entry.status === "analyzing" ? "analysis running" : "";
+      entry.status === "failed" ? "failed" : entry.status === "analyzing" ? "analysis running" : "";
     const parts = [
-      entry.meetingDateTime || "date not stated",
-      `${entry.itemCount || 0} rows`,
+      todoCountLabel(entry.itemCount || 0),
       `${(entry.characterCount || 0).toLocaleString()} chars`,
       statusText,
     ];
     meta.textContent = parts.filter(Boolean).join(" / ");
 
-    const basis = document.createElement("div");
-    basis.className = entry.status === "failed" ? "transcript-basis is-error" : "transcript-basis";
-    basis.textContent = entry.status === "failed" ? entry.error || "analysis failed" : entry.metadataBasis || "";
+    const summary = document.createElement("div");
+    summary.className = entry.status === "failed" ? "transcript-summary is-error" : "transcript-summary";
+    summary.textContent =
+      entry.status === "failed"
+        ? entry.error || "analysis failed; saved transcription can be retried"
+        : entry.summary || "";
 
     const link = document.createElement("a");
     link.className = "pdf-link";
@@ -391,10 +431,19 @@ function renderTranscripts() {
 
     const actions = document.createElement("div");
     actions.className = "transcript-actions";
+    if (entry.status === "failed") {
+      const retryButton = document.createElement("button");
+      retryButton.className = "transcript-retry";
+      retryButton.type = "button";
+      retryButton.disabled = retryingTranscriptId === entry.id;
+      retryButton.textContent = retryingTranscriptId === entry.id ? "retrying" : "retry";
+      retryButton.addEventListener("click", () => retryTranscript(entry));
+      actions.append(retryButton);
+    }
     actions.append(link, deleteButton);
 
     card.append(title, meta);
-    if (basis.textContent) card.append(basis);
+    if (summary.textContent) card.append(summary);
     card.append(actions);
     return card;
   });
@@ -406,11 +455,12 @@ function render() {
   renderTranscripts();
 }
 
-async function loadItems() {
+async function loadItems(options = {}) {
+  const setReadyStatus = options.setReadyStatus !== false;
   const response = await fetch("/api/todo/items");
   if (!response.ok) {
-    setStatus("load failed", "bad");
-    return;
+    if (setReadyStatus) setStatus("load failed", "bad");
+    return false;
   }
   const payload = await response.json();
   items = payload.items || [];
@@ -418,7 +468,27 @@ async function loadItems() {
   aiConfigured = Boolean(payload.aiConfigured);
   modelName = payload.model || "";
   render();
-  setStatus(aiConfigured ? `ready / ${modelName}` : "AI key missing", aiConfigured ? "" : "bad");
+  if (setReadyStatus) setStatus(aiConfigured ? `ready / ${modelName}` : "AI key missing", aiConfigured ? "" : "bad");
+  return true;
+}
+
+async function reconcileAnalysisFailure(beforeItemCount, beforeTranscriptIds, message) {
+  const loaded = await loadItems({ setReadyStatus: false });
+  if (loaded) {
+    const added = Math.max(0, items.length - beforeItemCount);
+    const newTranscripts = transcripts.filter((entry) => !beforeTranscriptIds.has(entry.id));
+    const completeTranscript = newTranscripts.find((entry) => entry.status === "complete");
+    const failedTranscript = newTranscripts.find((entry) => entry.status === "failed");
+    if (added || completeTranscript) {
+      setStatus(added ? `added ${todoCountLabel(added)}` : "saved transcription, no supported todos found");
+      return;
+    }
+    if (failedTranscript) {
+      setStatus(failedTranscript.error || message || "analysis failed; saved transcription can be retried", "bad");
+      return;
+    }
+  }
+  setStatus(message || "analysis failed", "bad");
 }
 
 async function analyzeTranscript() {
@@ -428,6 +498,8 @@ async function analyzeTranscript() {
     setStatus("paste a transcription", "bad");
     return;
   }
+  const beforeItemCount = items.length;
+  const beforeTranscriptIds = new Set(transcripts.map((entry) => entry.id));
   analyzeButton.disabled = true;
   setStatus("analyzing");
   try {
@@ -438,7 +510,7 @@ async function analyzeTranscript() {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      setStatus(payload.detail || "analysis failed", "bad");
+      await reconcileAnalysisFailure(beforeItemCount, beforeTranscriptIds, payload.detail || "analysis failed");
       return;
     }
     items = payload.allItems || items;
@@ -446,7 +518,9 @@ async function analyzeTranscript() {
     render();
     transcriptInput.value = "";
     const count = payload.items?.length || 0;
-    setStatus(count ? `added ${count} rows` : "saved transcription, no supported todos found");
+    setStatus(count ? `added ${todoCountLabel(count)}` : "saved transcription, no supported todos found");
+  } catch {
+    await reconcileAnalysisFailure(beforeItemCount, beforeTranscriptIds, "analysis failed");
   } finally {
     analyzeButton.disabled = false;
   }

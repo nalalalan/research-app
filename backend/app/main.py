@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import os
@@ -26,8 +27,8 @@ OPENAI_API_KEY = os.getenv("TODO_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("TODO_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.5"
 OPENAI_REASONING_EFFORT = os.getenv("TODO_OPENAI_REASONING_EFFORT", "medium").strip() or "medium"
 MAX_TRANSCRIPT_CHARS = int(os.getenv("TODO_MAX_TRANSCRIPT_CHARS", "240000"))
-CHUNK_CHARS = int(os.getenv("TODO_CHUNK_CHARS", "28000"))
-CHUNK_OVERLAP_CHARS = int(os.getenv("TODO_CHUNK_OVERLAP_CHARS", "900"))
+CHUNK_CHARS = int(os.getenv("TODO_CHUNK_CHARS", "18000"))
+CHUNK_OVERLAP_CHARS = int(os.getenv("TODO_CHUNK_OVERLAP_CHARS", "700"))
 MAX_ITEMS_PER_CHUNK = int(os.getenv("TODO_MAX_ITEMS_PER_CHUNK", "18"))
 ANALYSIS_MAX_OUTPUT_TOKENS = int(os.getenv("TODO_ANALYSIS_MAX_OUTPUT_TOKENS", "32000"))
 STATE_SCHEMA = "transcript_todo_v1"
@@ -180,12 +181,41 @@ def _compact_item(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _compact_transcript(transcript: dict[str, Any]) -> dict[str, Any]:
+def _fallback_transcript_summary(transcript: dict[str, Any], linked_items: list[dict[str, Any]] | None = None) -> str:
+    title = _safe_text(transcript.get("name"), 120) or "transcription"
+    linked_items = linked_items or []
+    tasks = [
+        _safe_text(item.get("task") or item.get("item"), 120)
+        for item in sorted(linked_items, key=lambda item: _total_score(item), reverse=True)
+    ]
+    tasks = [task.rstrip(".") for task in tasks if task]
+    if tasks:
+        sample = "; ".join(tasks[:3])
+        return _safe_text(f"{title}: {sample}.", 700)
+    count = int(transcript.get("itemCount") or 0)
+    if count:
+        noun = "todo" if count == 1 else "todos"
+        return f"{title}: {count} {noun} extracted from this transcription."
+    if title and title != "transcription":
+        return f"{title}: no supported todos extracted."
+    return ""
+
+
+def _compact_transcript(transcript: dict[str, Any], items: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    linked_items = [
+        item
+        for item in (items or [])
+        if str(item.get("sourceTranscriptId", "")) == str(transcript.get("id", ""))
+    ]
+    summary = _safe_text(transcript.get("summary") or transcript.get("metadataSummary"), 700)
+    if not summary:
+        summary = _fallback_transcript_summary(transcript, linked_items)
     payload = {
         "id": str(transcript.get("id", "")),
         "name": _safe_text(transcript.get("name"), 180),
         "meetingDateTime": _safe_text(transcript.get("meetingDateTime"), 120),
         "metadataBasis": _safe_text(transcript.get("metadataBasis"), 400),
+        "summary": summary,
         "createdAt": str(transcript.get("createdAt", "")),
         "characterCount": int(transcript.get("characterCount") or 0),
         "chunkCount": int(transcript.get("chunkCount") or 0),
@@ -271,6 +301,7 @@ async def _infer_transcript_metadata(text: str) -> dict[str, str]:
     fallback = {
         "title": f"meeting {time.strftime('%Y-%m-%d')}",
         "dateTime": "date not stated",
+        "summary": "",
         "basis": "",
         "confidence": "low",
     }
@@ -280,10 +311,11 @@ async def _infer_transcript_metadata(text: str) -> dict[str, str]:
     schema = {
         "type": "object",
         "additionalProperties": False,
-        "required": ["title", "dateTime", "basis", "confidence"],
+        "required": ["title", "dateTime", "summary", "basis", "confidence"],
         "properties": {
             "title": {"type": "string"},
             "dateTime": {"type": "string"},
+            "summary": {"type": "string"},
             "basis": {"type": "string"},
             "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
         },
@@ -299,6 +331,8 @@ async def _infer_transcript_metadata(text: str) -> dict[str, str]:
                 "Do not use filename, upload time, or outside knowledge.",
                 "title should be a short readable meeting title, 3-9 words, based on the actual topic.",
                 "dateTime should be the meeting date/time if explicitly stated or strongly implied by the transcript. If not stated, write 'date not stated'.",
+                "summary should be a useful 1-2 sentence summary, 18-55 words, of what the transcript covered and why todo rows were created.",
+                "summary must not be a raw quote, a filename, or a generic phrase like 'meeting transcript'.",
                 "basis must be an exact short quote or phrase from the transcript that supports the title/date. If no date is stated, basis may support only the title.",
                 "confidence is high only when both title and date/time are clearly supported. Use medium for a clear topic but unstated date. Use low for weak topic evidence.",
                 "Return JSON only through the schema.",
@@ -324,9 +358,44 @@ async def _infer_transcript_metadata(text: str) -> dict[str, str]:
         return fallback
     title = _safe_text(payload.get("title"), 180) or fallback["title"]
     date_time = _safe_text(payload.get("dateTime"), 120) or "date not stated"
+    summary = _safe_text(payload.get("summary"), 700)
     basis = _safe_text(payload.get("basis"), 400)
     confidence = _safe_text(payload.get("confidence"), 20) or "low"
-    return {"title": title, "dateTime": date_time, "basis": basis, "confidence": confidence}
+    return {"title": title, "dateTime": date_time, "summary": summary, "basis": basis, "confidence": confidence}
+
+
+async def _fill_missing_transcript_summaries() -> None:
+    if not OPENAI_API_KEY:
+        return
+    state = _load_state()
+    targets = [
+        entry
+        for entry in state.get("transcripts", [])
+        if _safe_text(entry.get("text"), 1) and not _safe_text(entry.get("summary") or entry.get("metadataSummary"), 2)
+    ]
+    for target in targets[:4]:
+        metadata = await _infer_transcript_metadata(str(target.get("text", "")))
+        state = _load_state()
+        changed = False
+        for entry in state.get("transcripts", []):
+            if str(entry.get("id")) != str(target.get("id")):
+                continue
+            summary = _safe_text(metadata.get("summary"), 700)
+            if summary:
+                entry["summary"] = summary
+                changed = True
+            if not _safe_text(entry.get("name"), 180) and metadata.get("title"):
+                entry["name"] = metadata["title"]
+                changed = True
+            if entry.get("meetingDateTime") in (None, "", "date not stated") and metadata.get("dateTime"):
+                entry["meetingDateTime"] = metadata["dateTime"]
+                changed = True
+            if not _safe_text(entry.get("metadataBasis"), 400) and metadata.get("basis"):
+                entry["metadataBasis"] = metadata["basis"]
+                changed = True
+            break
+        if changed:
+            _save_state(state)
 
 
 def _split_long_text(text: str, size: int = 1400) -> list[str]:
@@ -431,14 +500,19 @@ def _render_transcript_pdf(transcript: dict[str, Any]) -> bytes:
     title = _safe_text(transcript.get("name"), 180) or "transcript"
     meeting_time = _safe_text(transcript.get("meetingDateTime"), 120) or "date not stated"
     created = _safe_text(transcript.get("createdAt"), 80)
+    summary = _safe_text(transcript.get("summary") or transcript.get("metadataSummary"), 700)
     basis = _safe_text(transcript.get("metadataBasis"), 400)
-    meta_parts = [meeting_time, f"{int(transcript.get('characterCount') or 0):,} characters"]
+    meta_parts = [f"{int(transcript.get('characterCount') or 0):,} characters"]
+    if meeting_time and meeting_time != "date not stated":
+        meta_parts.insert(0, meeting_time)
     if created:
         meta_parts.append(f"uploaded {created}")
     story: list[Any] = [
         Paragraph(_xml_escape(title), styles["title"]),
         Paragraph(_xml_escape(" / ".join(meta_parts)), styles["meta"]),
     ]
+    if summary:
+        story.extend([Paragraph(_xml_escape(summary), styles["meta"]), Spacer(1, 0.08 * inch)])
     if basis:
         story.extend([Paragraph(_xml_escape(basis), styles["meta"]), Spacer(1, 0.08 * inch)])
     story.extend(_transcript_story_blocks(str(transcript.get("text", "")), styles))
@@ -558,29 +632,34 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
     }
 
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(170.0, connect=20.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(220.0, connect=20.0)) as client:
             response = await client.post(
                 "https://api.openai.com/v1/responses",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
                 json=request_body,
             )
     except httpx.TimeoutException as exc:
-        raise HTTPException(status_code=504, detail="AI analysis timed out") from exc
+        raise HTTPException(status_code=504, detail="AI analysis timed out; the transcription was saved and can be retried") from exc
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="AI analysis request failed") from exc
+        raise HTTPException(status_code=502, detail="AI analysis request failed; the transcription was saved and can be retried") from exc
 
     if response.status_code >= 400:
-        error_text = response.text[:500]
-        raise HTTPException(status_code=502, detail=f"AI analysis failed: {error_text}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI analysis failed upstream ({response.status_code}); the transcription was saved and can be retried",
+        )
 
-    response_payload = response.json()
+    try:
+        response_payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="AI response could not be read; the transcription was saved and can be retried") from exc
     text = _extract_response_text(response_payload)
     try:
         payload = _parse_json_object(text)
     except ValueError as exc:
         if response_payload.get("status") == "incomplete":
-            raise HTTPException(status_code=502, detail="AI response was incomplete; the transcription was saved") from exc
-        raise HTTPException(status_code=502, detail="AI response could not be read; the transcription was saved") from exc
+            raise HTTPException(status_code=502, detail="AI response was incomplete; the transcription was saved and can be retried") from exc
+        raise HTTPException(status_code=502, detail="AI response could not be read; the transcription was saved and can be retried") from exc
 
     raw_items = payload.get("items", [])
     if not isinstance(raw_items, list):
@@ -675,6 +754,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup() -> None:
     _mark_interrupted_analyses()
+    asyncio.create_task(_fill_missing_transcript_summaries())
 
 
 @app.get("/health")
@@ -696,9 +776,10 @@ async def index() -> FileResponse:
 @app.get("/api/todo/items")
 async def list_items() -> dict[str, Any]:
     state = _load_state()
+    state_items = state.get("items", [])
     return {
-        "items": [_compact_item(item) for item in state.get("items", [])],
-        "transcripts": [_compact_transcript(entry) for entry in state.get("transcripts", [])],
+        "items": [_compact_item(item) for item in state_items],
+        "transcripts": [_compact_transcript(entry, state_items) for entry in state.get("transcripts", [])],
         "updatedAt": state.get("updatedAt"),
         "aiConfigured": bool(OPENAI_API_KEY),
         "model": OPENAI_MODEL if OPENAI_API_KEY else "",
@@ -720,6 +801,7 @@ async def analyze_transcript(body: AnalyzeTranscriptBody) -> dict[str, Any]:
         "id": transcript_id,
         "name": metadata["title"],
         "meetingDateTime": metadata["dateTime"],
+        "summary": metadata.get("summary", ""),
         "metadataBasis": metadata["basis"],
         "metadataConfidence": metadata["confidence"],
         "text": transcript_text,
@@ -755,11 +837,66 @@ async def analyze_transcript(body: AnalyzeTranscriptBody) -> dict[str, Any]:
             break
     state.setdefault("items", []).extend(new_items)
     _save_state(state)
+    state_items = state.get("items", [])
     return {
-        "transcript": _compact_transcript(transcript | {"status": "complete", "itemCount": len(new_items)}),
+        "transcript": _compact_transcript(transcript | {"status": "complete", "itemCount": len(new_items)}, state_items),
         "items": [_compact_item(item) for item in new_items],
-        "allItems": [_compact_item(item) for item in state.get("items", [])],
-        "allTranscripts": [_compact_transcript(entry) for entry in state.get("transcripts", [])],
+        "allItems": [_compact_item(item) for item in state_items],
+        "allTranscripts": [_compact_transcript(entry, state_items) for entry in state.get("transcripts", [])],
+        "updatedAt": state["updatedAt"],
+    }
+
+
+@app.post("/api/todo/transcripts/{transcript_id}/retry")
+async def retry_transcript_analysis(transcript_id: str) -> dict[str, Any]:
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=503, detail="AI analysis is not configured")
+    state = _load_state()
+    transcript: dict[str, Any] | None = None
+    for entry in state.get("transcripts", []):
+        if str(entry.get("id")) == transcript_id:
+            transcript = entry
+            break
+    if not transcript:
+        raise HTTPException(status_code=404, detail="not found")
+    if transcript.get("status") != "failed":
+        raise HTTPException(status_code=400, detail="only failed transcriptions can be retried")
+    text = _safe_text(transcript.get("text"), MAX_TRANSCRIPT_CHARS + 1)
+    if not text:
+        raise HTTPException(status_code=400, detail="saved transcription text is missing")
+
+    transcript["status"] = "analyzing"
+    transcript["error"] = ""
+    transcript["model"] = OPENAI_MODEL
+    transcript["chunkCount"] = len(_chunk_transcript(text))
+    _save_state(state)
+
+    try:
+        new_items = await _analyze_transcript(transcript_id, _safe_text(transcript.get("name"), 180), text)
+    except HTTPException as exc:
+        state = _load_state()
+        for entry in state.get("transcripts", []):
+            if str(entry.get("id")) == transcript_id:
+                entry["status"] = "failed"
+                entry["error"] = _safe_text(exc.detail, 400)
+                break
+        _save_state(state)
+        raise
+
+    state = _load_state()
+    for entry in state.get("transcripts", []):
+        if str(entry.get("id")) == transcript_id:
+            entry["status"] = "complete"
+            entry["itemCount"] = len(new_items)
+            entry["error"] = ""
+            break
+    state.setdefault("items", []).extend(new_items)
+    _save_state(state)
+    state_items = state.get("items", [])
+    return {
+        "items": [_compact_item(item) for item in new_items],
+        "allItems": [_compact_item(item) for item in state_items],
+        "allTranscripts": [_compact_transcript(entry, state_items) for entry in state.get("transcripts", [])],
         "updatedAt": state["updatedAt"],
     }
 
@@ -825,11 +962,12 @@ async def delete_transcript(transcript_id: str) -> dict[str, Any]:
     ]
     removed_items = before_items - len(state["items"])
     _save_state(state)
+    state_items = state.get("items", [])
     return {
         "status": "ok",
         "removedItems": removed_items,
-        "items": [_compact_item(item) for item in state.get("items", [])],
-        "transcripts": [_compact_transcript(entry) for entry in state.get("transcripts", [])],
+        "items": [_compact_item(item) for item in state_items],
+        "transcripts": [_compact_transcript(entry, state_items) for entry in state.get("transcripts", [])],
         "updatedAt": state["updatedAt"],
     }
 

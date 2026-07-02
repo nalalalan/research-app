@@ -165,6 +165,7 @@ button {
 .primary-button,
 .delete-row,
 .pdf-link,
+.transcript-retry,
 .transcript-delete {
   border-radius: 6px;
   cursor: pointer;
@@ -193,6 +194,22 @@ button {
 
 .table-shell {
   overflow: hidden;
+}
+
+.table-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfaf5;
+}
+
+.todo-count {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 780;
 }
 
 .table-scroll {
@@ -518,17 +535,17 @@ blockquote {
 }
 
 .transcript-meta,
-.transcript-basis {
+.transcript-summary {
   color: var(--muted);
   font-size: 12.5px;
   line-height: 1.35;
 }
 
-.transcript-basis {
+.transcript-summary {
   color: #514c46;
 }
 
-.transcript-basis.is-error {
+.transcript-summary.is-error {
   color: var(--rust);
 }
 
@@ -548,13 +565,33 @@ blockquote {
   margin-top: 3px;
 }
 
+.transcript-retry,
 .transcript-delete {
   min-height: 34px;
   padding: 0 10px;
+  font-size: 12.5px;
+}
+
+.transcript-retry {
+  border: 1px solid rgba(63, 128, 124, 0.18);
+  background: #f7fbf8;
+  color: var(--teal-deep);
+}
+
+.transcript-retry:hover {
+  border-color: rgba(63, 128, 124, 0.32);
+  background: rgba(63, 128, 124, 0.08);
+}
+
+.transcript-retry:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.transcript-delete {
   border: 1px solid rgba(154, 78, 66, 0.16);
   background: #fffaf7;
   color: var(--rust);
-  font-size: 12.5px;
 }
 
 .transcript-delete:hover,
