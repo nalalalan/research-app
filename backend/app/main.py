@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import os
 import re
@@ -11,17 +9,13 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import Cookie, FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-COOKIE_NAME = "ao_todo_device"
-SESSION_SECONDS = 60 * 60 * 24 * 180
-PASSWORD = os.getenv("TODO_PASSWORD", "031120").strip()
-COOKIE_SECRET = os.getenv("TODO_COOKIE_SECRET", "local-todo-cookie-secret").strip()
 OPENAI_API_KEY = os.getenv("TODO_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
 OPENAI_MODEL = os.getenv("TODO_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5-mini"
 OPENAI_REASONING_EFFORT = os.getenv("TODO_OPENAI_REASONING_EFFORT", "medium").strip() or "medium"
@@ -110,30 +104,6 @@ def _save_state(state: dict[str, Any]) -> None:
     STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
-def _sign(expires: int) -> str:
-    digest = hmac.new(COOKIE_SECRET.encode("utf-8"), str(expires).encode("utf-8"), hashlib.sha256).hexdigest()
-    return f"{expires}.{digest}"
-
-
-def _valid_cookie(value: str | None) -> bool:
-    if not value or "." not in value:
-        return False
-    expires_text, signature = value.split(".", 1)
-    try:
-        expires = int(expires_text)
-    except ValueError:
-        return False
-    if expires < int(time.time()):
-        return False
-    expected = _sign(expires).split(".", 1)[1]
-    return hmac.compare_digest(signature, expected)
-
-
-def _require_auth(cookie: str | None) -> None:
-    if not _valid_cookie(cookie):
-        raise HTTPException(status_code=401, detail="locked")
-
-
 def _safe_text(value: Any, limit: int = 5000) -> str:
     text = "" if value is None else str(value)
     text = text.replace("\x00", "").strip()
@@ -192,7 +162,7 @@ def _compact_item(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _compact_transcript(transcript: dict[str, Any], include_text: bool = False) -> dict[str, Any]:
+def _compact_transcript(transcript: dict[str, Any]) -> dict[str, Any]:
     payload = {
         "id": str(transcript.get("id", "")),
         "name": _safe_text(transcript.get("name"), 180),
@@ -204,8 +174,6 @@ def _compact_transcript(transcript: dict[str, Any], include_text: bool = False) 
         "status": _safe_text(transcript.get("status"), 40),
         "error": _safe_text(transcript.get("error"), 400),
     }
-    if include_text:
-        payload["text"] = str(transcript.get("text", ""))
     return payload
 
 
@@ -442,11 +410,6 @@ async def _analyze_transcript(transcript_id: str, name: str, text: str) -> list[
     ]
 
 
-class AuthBody(BaseModel):
-    password: str = Field(max_length=80)
-    remember: bool = True
-
-
 class AnalyzeTranscriptBody(BaseModel):
     name: str = Field(default="", max_length=180)
     transcript: str = Field(min_length=1, max_length=300000)
@@ -499,42 +462,12 @@ async def health() -> dict[str, Any]:
 
 
 @app.get("/")
-async def index(ao_todo_device: str | None = Cookie(default=None)) -> FileResponse:
-    if not _valid_cookie(ao_todo_device):
-        return FileResponse(ROOT_DIR / "gate.html")
+async def index() -> FileResponse:
     return FileResponse(ROOT_DIR / "index.html")
 
 
-@app.get("/api/session")
-async def session(ao_todo_device: str | None = Cookie(default=None)) -> dict[str, bool]:
-    return {"authenticated": _valid_cookie(ao_todo_device)}
-
-
-@app.post("/api/auth")
-async def auth(body: AuthBody, request: Request, response: Response) -> dict[str, str]:
-    if not secrets.compare_digest(body.password.strip(), PASSWORD):
-        raise HTTPException(status_code=403, detail="wrong password")
-    expires = int(time.time()) + SESSION_SECONDS
-    response.set_cookie(
-        COOKIE_NAME,
-        _sign(expires),
-        max_age=SESSION_SECONDS if body.remember else None,
-        httponly=True,
-        secure=request.url.scheme == "https",
-        samesite="lax",
-    )
-    return {"status": "ok"}
-
-
-@app.post("/api/logout")
-async def logout(response: Response) -> dict[str, str]:
-    response.delete_cookie(COOKIE_NAME)
-    return {"status": "ok"}
-
-
 @app.get("/api/todo/items")
-async def list_items(ao_todo_device: str | None = Cookie(default=None)) -> dict[str, Any]:
-    _require_auth(ao_todo_device)
+async def list_items() -> dict[str, Any]:
     state = _load_state()
     return {
         "items": [_compact_item(item) for item in state.get("items", [])],
@@ -545,19 +478,8 @@ async def list_items(ao_todo_device: str | None = Cookie(default=None)) -> dict[
     }
 
 
-@app.get("/api/todo/transcripts/{transcript_id}")
-async def get_transcript(transcript_id: str, ao_todo_device: str | None = Cookie(default=None)) -> dict[str, Any]:
-    _require_auth(ao_todo_device)
-    state = _load_state()
-    for transcript in state.get("transcripts", []):
-        if str(transcript.get("id")) == transcript_id:
-            return {"transcript": _compact_transcript(transcript, include_text=True)}
-    raise HTTPException(status_code=404, detail="not found")
-
-
 @app.post("/api/todo/transcripts/analyze")
-async def analyze_transcript(body: AnalyzeTranscriptBody, ao_todo_device: str | None = Cookie(default=None)) -> dict[str, Any]:
-    _require_auth(ao_todo_device)
+async def analyze_transcript(body: AnalyzeTranscriptBody) -> dict[str, Any]:
     transcript_text = body.transcript.strip()
     if len(transcript_text) > MAX_TRANSCRIPT_CHARS:
         raise HTTPException(status_code=413, detail=f"Transcript limit is {MAX_TRANSCRIPT_CHARS} characters")
@@ -611,8 +533,7 @@ async def analyze_transcript(body: AnalyzeTranscriptBody, ao_todo_device: str | 
 
 
 @app.post("/api/todo/items")
-async def create_item(body: CreateItemBody, ao_todo_device: str | None = Cookie(default=None)) -> dict[str, Any]:
-    _require_auth(ao_todo_device)
+async def create_item(body: CreateItemBody) -> dict[str, Any]:
     state = _load_state()
     now = _now()
     item = {
@@ -639,8 +560,7 @@ async def create_item(body: CreateItemBody, ao_todo_device: str | None = Cookie(
 
 
 @app.patch("/api/todo/items/order")
-async def reorder_items(body: ReorderItemsBody, ao_todo_device: str | None = Cookie(default=None)) -> dict[str, Any]:
-    _require_auth(ao_todo_device)
+async def reorder_items(body: ReorderItemsBody) -> dict[str, Any]:
     state = _load_state()
     items = state.get("items", [])
     order = [str(item.get("id", "")) for item in items]
@@ -654,8 +574,7 @@ async def reorder_items(body: ReorderItemsBody, ao_todo_device: str | None = Coo
 
 
 @app.patch("/api/todo/items/{item_id}")
-async def update_item(item_id: str, body: UpdateItemBody, ao_todo_device: str | None = Cookie(default=None)) -> dict[str, Any]:
-    _require_auth(ao_todo_device)
+async def update_item(item_id: str, body: UpdateItemBody) -> dict[str, Any]:
     state = _load_state()
     allowed_states = {"review", "active", "done", "set_aside", "needs_evidence", "manual"}
     for item in state.get("items", []):
@@ -677,8 +596,7 @@ async def update_item(item_id: str, body: UpdateItemBody, ao_todo_device: str | 
 
 
 @app.delete("/api/todo/items/{item_id}")
-async def delete_item(item_id: str, ao_todo_device: str | None = Cookie(default=None)) -> dict[str, Any]:
-    _require_auth(ao_todo_device)
+async def delete_item(item_id: str) -> dict[str, Any]:
     state = _load_state()
     before = len(state.get("items", []))
     state["items"] = [item for item in state.get("items", []) if str(item.get("id")) != item_id]

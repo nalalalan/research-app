@@ -5,7 +5,6 @@ const transcriptFile = document.querySelector("#transcriptFile");
 const analyzeButton = document.querySelector("#analyzeButton");
 const clearTranscript = document.querySelector("#clearTranscript");
 const intakeStatus = document.querySelector("#intakeStatus");
-const logoutButton = document.querySelector("#logout");
 
 const saveTimers = new Map();
 
@@ -415,10 +414,6 @@ function render() {
 
 async function loadItems() {
   const response = await fetch("/api/todo/items");
-  if (response.status === 401) {
-    window.location.href = "/";
-    return;
-  }
   if (!response.ok) {
     setStatus("load failed", "bad");
     return;
@@ -478,11 +473,6 @@ clearTranscript.addEventListener("click", () => {
   transcriptName.value = "";
   transcriptFile.value = "";
   setStatus("cleared");
-});
-
-logoutButton.addEventListener("click", async () => {
-  await fetch("/api/logout", { method: "POST" });
-  window.location.href = "/";
 });
 
 document.addEventListener("keydown", (event) => {
