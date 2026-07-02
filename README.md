@@ -10,7 +10,7 @@ Shape:
 - rows stay editable and reviewable
 - table columns: todo, ease /100, Disney /100, total
 - clicking a table header sorts that column; numeric columns sort high-to-low first, then low-to-high
-- each todo cell renders two sections only: `fix` for the action/context/date/time estimate and `quote` for the actual transcript quote
+- each todo cell renders the action/context/date/time estimate followed by a quote block formatted as `Speaker: exact quote`
 - row state is not a dropdown; the row has a direct `done` action
 - total score is computed as `easeScore + disneyScore`
 - raw transcript text is stored server-side and exposed through readable generated PDFs under the transcription archive
@@ -41,7 +41,7 @@ Runtime:
 Railway variables:
 
 - `OPENAI_API_KEY`
-- `TODO_OPENAI_MODEL` or `OPENAI_MODEL`, default `gpt-5.5-pro`
-- `TODO_OPENAI_REASONING_EFFORT`, default `high`
+- `TODO_OPENAI_MODEL` or `OPENAI_MODEL`, default `gpt-5.5`
+- `TODO_OPENAI_REASONING_EFFORT`, default `medium`
 - `TODO_ANALYSIS_MAX_OUTPUT_TOKENS`, default `32000`
 - `TODO_STATE_PATH`, optional; Railway volume should normally use `/data/todo_state.json`

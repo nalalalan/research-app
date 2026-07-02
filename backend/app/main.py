@@ -23,8 +23,8 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 OPENAI_API_KEY = os.getenv("TODO_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
-OPENAI_MODEL = os.getenv("TODO_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.5-pro"
-OPENAI_REASONING_EFFORT = os.getenv("TODO_OPENAI_REASONING_EFFORT", "high").strip() or "high"
+OPENAI_MODEL = os.getenv("TODO_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.5"
+OPENAI_REASONING_EFFORT = os.getenv("TODO_OPENAI_REASONING_EFFORT", "medium").strip() or "medium"
 MAX_TRANSCRIPT_CHARS = int(os.getenv("TODO_MAX_TRANSCRIPT_CHARS", "240000"))
 CHUNK_CHARS = int(os.getenv("TODO_CHUNK_CHARS", "28000"))
 CHUNK_OVERLAP_CHARS = int(os.getenv("TODO_CHUNK_OVERLAP_CHARS", "900"))
@@ -542,13 +542,13 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                 "Do not generate questions for Alan to ask. Do not write a question list. If someone explicitly requested a follow-up check, write the check itself as the task or details.",
                 "Dependent follow-up checks still count as todo rows when someone offers or requests them, such as checking a PDF after an edit, verifying a figure after export, or reviewing a citation after insertion. Mark the dependency in details instead of dropping the row.",
                 "Use the speaker names in the transcript when they matter. sourceSpeaker should be the person who assigned, requested, volunteered, or clarified the action. Leave it blank only when the transcript has no speaker names.",
-                "task is the thing to be done, written as a direct concrete action.",
+                "task is the thing to be done, written as a direct concrete action. Do not start the task with a speaker name; the speaker belongs in sourceSpeaker and the quote display.",
                 "details must include specific context: who said what, what was decided, and what source condition matters.",
                 "timeEstimate is a practical estimate such as 10 min, 30 min, 2 hr, half day, 1 day, or unknown.",
                 "easeScore is 0-100 for how easy this is to finish quickly. Very easy immediate tasks should score high. Long, ambiguous, blocked, or emotionally heavy tasks should score lower.",
                 "disneyScore is 0-100 for future-goal value, named after Alan's Disney/Imagineering goal but broader than literal Disney wording. Treat paper progress, research progress, mechanism/simulator progress, portfolio evidence, career positioning, life stability, goals, dreams, and current physical-system work as direct Disney-score evidence when the transcript supports that lane. Do not require the word Disney to appear for a paper or research task to score high. Do not give a negligible Disney score to paper, PDF, citation, figure, or research-support work merely because it is editing or checking; score minor polish moderate, claim/evidence/career-facing work high, and direct portfolio/research breakthroughs highest.",
                 "why must explain both scores in one short source-grounded note. Do not write motivational copy.",
-                "evidenceQuote must be an exact continuous quote copied from the transcript chunk, 12-260 characters, that supports the row.",
+                "evidenceQuote must be an exact continuous quote copied from the transcript chunk, 12-260 characters, that supports the row. Prefer the spoken words without the speaker label when the transcript label is separate.",
                 "confidence is high only when the transcript clearly supports the task, details, ease basis, and Disney-goal basis. Use medium or low for ambiguous ownership, missing date, weak ease basis, or weak Disney basis.",
                 "Return JSON only through the schema. Keep strings compact. Do not include markdown.",
             ]

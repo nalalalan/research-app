@@ -62,9 +62,22 @@ function splitFixBody(value) {
 }
 
 function fixMeta(item) {
-  return [formatDate(item.dateAdded), safeText(item.timeEstimate).trim(), safeText(item.sourceSpeaker).trim()]
+  return [formatDate(item.dateAdded), safeText(item.timeEstimate).trim()]
     .filter(Boolean)
     .join(" / ");
+}
+
+function quoteBody(item) {
+  const quote = safeText(item.evidence?.length ? item.evidence[0] : "").trim();
+  if (!quote) return "no quote saved";
+  const speaker = safeText(item.sourceSpeaker).trim();
+  if (!speaker) return quote;
+  const normalizedQuote = quote.toLowerCase();
+  const normalizedSpeaker = speaker.toLowerCase();
+  if (normalizedQuote.startsWith(`${normalizedSpeaker}:`) || normalizedQuote.startsWith(`${normalizedSpeaker} -`)) {
+    return quote;
+  }
+  return `${speaker}: ${quote}`;
 }
 
 function scheduleSave(id, patch) {
@@ -174,10 +187,6 @@ function buildTodoCell(item) {
   const fixSection = document.createElement("section");
   fixSection.className = "todo-section";
 
-  const fixLabel = document.createElement("div");
-  fixLabel.className = "todo-section-label";
-  fixLabel.textContent = "fix";
-
   const meta = document.createElement("div");
   meta.className = "todo-meta";
   meta.textContent = fixMeta(item);
@@ -186,7 +195,7 @@ function buildTodoCell(item) {
   todo.className = "fix-input";
   todo.value = fixBody(item);
   todo.spellcheck = true;
-  todo.setAttribute("aria-label", "fix");
+  todo.setAttribute("aria-label", "todo");
   todo.addEventListener("input", () => {
     const patch = splitFixBody(todo.value);
     item.task = patch.task;
@@ -196,22 +205,17 @@ function buildTodoCell(item) {
     scheduleSave(item.id, patch);
   });
   requestAnimationFrame(() => autosize(todo));
-  fixSection.append(fixLabel);
   if (meta.textContent) fixSection.append(meta);
   fixSection.append(todo);
 
   const quoteSection = document.createElement("section");
   quoteSection.className = "todo-section";
 
-  const quoteLabel = document.createElement("div");
-  quoteLabel.className = "todo-section-label";
-  quoteLabel.textContent = "quote";
-
   const quote = document.createElement("blockquote");
   quote.className = "quote-block";
-  quote.textContent = item.evidence?.length ? item.evidence[0] : "no quote saved";
+  quote.textContent = quoteBody(item);
 
-  quoteSection.append(quoteLabel, quote);
+  quoteSection.append(quote);
   sections.append(fixSection, quoteSection);
   cell.append(actions, sections);
 
