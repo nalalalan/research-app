@@ -202,17 +202,16 @@ button {
 
 table {
   width: 100%;
-  min-width: 960px;
+  min-width: 820px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
 }
 
-.col-todo { width: 52%; }
-.col-date-time { width: 15%; }
+.col-todo { width: 65%; }
 .col-ease { width: 11%; }
-.col-disney { width: 12%; }
-.col-total { width: 10%; }
+.col-disney { width: 13%; }
+.col-total { width: 11%; }
 
 th,
 td {
@@ -228,7 +227,7 @@ td:last-child {
 
 th {
   height: 38px;
-  padding: 0 12px;
+  padding: 0;
   background: #faf8f1;
   color: #6d655b;
   font-size: 12.5px;
@@ -236,6 +235,54 @@ th {
   text-align: left;
   text-transform: lowercase;
   white-space: nowrap;
+}
+
+.sort-button {
+  display: inline-flex;
+  width: 100%;
+  height: 38px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: lowercase;
+}
+
+.sort-button::after {
+  content: "";
+  width: 0;
+  height: 0;
+  margin-left: auto;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  opacity: 0.2;
+}
+
+.sort-button[data-active="true"] {
+  color: var(--teal-deep);
+}
+
+.sort-button[data-active="true"]::after {
+  opacity: 0.75;
+}
+
+.sort-button[data-dir="asc"]::after {
+  border-top: 0;
+  border-bottom: 5px solid currentColor;
+}
+
+.sort-button:hover,
+.sort-button:focus-visible {
+  background: #f4f0e6;
+  outline: none;
 }
 
 td {
@@ -260,17 +307,38 @@ tbody tr:focus-within td {
   background: rgba(255, 241, 238, 0.4);
 }
 
-.row-top {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 7px;
+.todo-cell {
+  position: relative;
+  padding-right: 118px;
 }
 
-.state-select,
-.todo-input,
-.date-input,
-.time-input,
+.todo-sections {
+  display: grid;
+  gap: 10px;
+}
+
+.todo-section {
+  min-width: 0;
+}
+
+.todo-section-label {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 780;
+  line-height: 1;
+  text-transform: lowercase;
+}
+
+.todo-meta {
+  margin-bottom: 5px;
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.fix-input,
 .score-input {
   border: 1px solid transparent;
   border-radius: 6px;
@@ -279,34 +347,32 @@ tbody tr:focus-within td {
   outline: none;
 }
 
-.state-select {
-  width: auto;
-  max-width: 130px;
-  height: 28px;
-  padding: 0 25px 0 8px;
-  border-color: var(--line);
-  background: #fffefb;
-  color: var(--muted);
-  font-size: 12.5px;
-  font-weight: 680;
+.row-actions {
+  position: absolute;
+  top: 10px;
+  right: 11px;
+  display: flex;
+  gap: 6px;
 }
 
-.source-chip {
-  min-width: 0;
-  color: var(--muted);
-  font-size: 12.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+.done-row,
 .delete-row {
-  margin-left: auto;
-  min-width: 28px;
   height: 28px;
+  padding: 0 8px;
   border: 1px solid transparent;
+  border-radius: 6px;
   background: transparent;
   color: var(--soft);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 720;
+}
+
+.done-row:hover,
+.done-row.is-done {
+  border-color: rgba(63, 128, 124, 0.22);
+  background: rgba(63, 128, 124, 0.08);
+  color: var(--teal-deep);
 }
 
 .delete-row:hover,
@@ -316,38 +382,33 @@ tbody tr:focus-within td {
   color: var(--rust);
 }
 
-.todo-input {
+.fix-input {
   width: 100%;
   min-width: 0;
-  min-height: 92px;
-  max-height: 310px;
+  min-height: 48px;
+  max-height: 190px;
   padding: 7px 8px;
   resize: none;
   color: #302e2a;
   font-size: 14px;
-  line-height: 1.38;
+  line-height: 1.35;
   overflow: hidden;
 }
 
-.state-select:focus,
-.todo-input:focus,
-.date-input:focus,
-.time-input:focus,
+.fix-input:focus,
 .score-input:focus {
   border-color: rgba(63, 128, 124, 0.58);
   background: var(--surface);
   box-shadow: 0 0 0 3px rgba(63, 128, 124, 0.1);
 }
 
-.todo-input:hover,
-.date-input:hover,
-.time-input:hover,
+.fix-input:hover,
 .score-input:hover {
   background: rgba(248, 246, 239, 0.9);
 }
 
 blockquote {
-  margin: 7px 0 0;
+  margin: 0;
   padding: 7px 9px;
   border-left: 3px solid rgba(96, 101, 143, 0.42);
   color: #4d4943;
@@ -356,20 +417,6 @@ blockquote {
   line-height: 1.35;
 }
 
-.questions {
-  margin-top: 6px;
-  color: var(--gold);
-  font-size: 12.5px;
-  line-height: 1.35;
-}
-
-.date-time-cell {
-  display: grid;
-  gap: 7px;
-}
-
-.date-input,
-.time-input,
 .score-input {
   width: 100%;
   height: 32px;
@@ -538,6 +585,14 @@ blockquote {
   }
 
   table {
-    min-width: 920px;
+    min-width: 800px;
+  }
+
+  .todo-cell {
+    padding-right: 104px;
+  }
+
+  .row-actions {
+    right: 9px;
   }
 }

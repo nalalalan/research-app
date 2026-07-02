@@ -8,7 +8,10 @@ Shape:
 - AI infers the transcript title/date-time from the transcript text
 - AI extracts only transcript-supported todo rows; rows are added automatically after analysis
 - rows stay editable and reviewable
-- table columns: todo, date / time, ease /100, Disney /100, total
+- table columns: todo, ease /100, Disney /100, total
+- clicking a table header sorts that column; numeric columns sort high-to-low first, then low-to-high
+- each todo cell renders two sections only: `fix` for the action/context/date/time estimate and `quote` for the actual transcript quote
+- row state is not a dropdown; the row has a direct `done` action
 - total score is computed as `easeScore + disneyScore`
 - raw transcript text is stored server-side and exposed through readable generated PDFs under the transcription archive
 - transcript cards have a delete action that removes both the saved transcription and todo rows generated from it

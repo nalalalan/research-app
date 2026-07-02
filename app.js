@@ -3,6 +3,7 @@ const transcriptsEl = document.querySelector("#transcripts");
 const transcriptInput = document.querySelector("#transcriptInput");
 const analyzeButton = document.querySelector("#analyzeButton");
 const intakeStatus = document.querySelector("#intakeStatus");
+const sortButtons = [...document.querySelectorAll(".sort-button")];
 
 const saveTimers = new Map();
 
@@ -12,6 +13,7 @@ let aiConfigured = false;
 let modelName = "";
 let confirmDeleteId = "";
 let confirmTranscriptDeleteId = "";
+let sortState = { key: "", direction: "desc" };
 
 function setStatus(text, tone = "") {
   intakeStatus.textContent = text;
@@ -38,25 +40,34 @@ function formatDate(value) {
   return text.slice(0, 10);
 }
 
-function todoBody(item) {
-  return [item.task, item.details, item.why]
+function compactParts(parts) {
+  return parts
     .map((part) => safeText(part).trim())
     .filter(Boolean)
-    .join("\n\n");
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function splitTodoBody(value) {
-  const lines = safeText(value)
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const task = lines.shift() || "";
+function fixBody(item) {
+  const questions = Array.isArray(item.openQuestions) && item.openQuestions.length
+    ? `Question: ${item.openQuestions.join(" / ")}`
+    : "";
+  return compactParts([item.task, item.details, item.why, questions]);
+}
+
+function splitFixBody(value) {
   return {
-    task,
-    details: lines.join("\n"),
+    task: safeText(value).replace(/\s+/g, " ").trim(),
+    details: "",
     why: "",
   };
+}
+
+function fixMeta(item) {
+  return [formatDate(item.dateAdded), safeText(item.timeEstimate).trim(), safeText(item.sourceSpeaker).trim()]
+    .filter(Boolean)
+    .join(" / ");
 }
 
 function scheduleSave(id, patch) {
@@ -81,45 +92,6 @@ function autosize(textarea) {
   textarea.style.height = `${Math.min(260, Math.max(34, textarea.scrollHeight))}px`;
 }
 
-function makeInput(item, field, className, multiline = false) {
-  const control = document.createElement(multiline ? "textarea" : "input");
-  control.className = className;
-  control.value = safeText(item[field]);
-  control.spellcheck = true;
-  control.setAttribute("aria-label", field);
-  control.addEventListener("input", () => {
-    item[field] = control.value;
-    if (multiline) autosize(control);
-    scheduleSave(item.id, { [field]: control.value });
-  });
-  if (multiline) requestAnimationFrame(() => autosize(control));
-  return control;
-}
-
-function makeStateSelect(item) {
-  const select = document.createElement("select");
-  select.className = "state-select";
-  select.setAttribute("aria-label", "row state");
-  [
-    ["review", "review"],
-    ["active", "active"],
-    ["done", "done"],
-    ["set_aside", "set aside"],
-    ["needs_evidence", "needs evidence"],
-  ].forEach(([value, label]) => {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    select.append(option);
-  });
-  select.value = item.state || "review";
-  select.addEventListener("change", () => {
-    item.state = select.value;
-    scheduleSave(item.id, { state: select.value });
-  });
-  return select;
-}
-
 async function deleteItem(item) {
   if (confirmDeleteId !== item.id) {
     confirmDeleteId = item.id;
@@ -135,6 +107,25 @@ async function deleteItem(item) {
   confirmDeleteId = "";
   renderItems();
   setStatus("deleted");
+}
+
+async function markDone(item) {
+  if (item.state === "done") {
+    setStatus("done");
+    return;
+  }
+  const response = await fetch(`/api/todo/items/${item.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state: "done" }),
+  });
+  if (!response.ok) {
+    setStatus("save failed", "bad");
+    return;
+  }
+  item.state = "done";
+  renderItems();
+  setStatus("done");
 }
 
 async function deleteTranscript(entry) {
@@ -161,31 +152,46 @@ function buildTodoCell(item) {
   const cell = document.createElement("td");
   cell.className = "todo-cell";
 
-  const top = document.createElement("div");
-  top.className = "row-top";
-  top.append(makeStateSelect(item));
+  const actions = document.createElement("div");
+  actions.className = "row-actions";
 
-  const source = document.createElement("span");
-  source.className = "source-chip";
-  const sourceParts = [item.sourceSpeaker, item.confidence].filter(Boolean);
-  source.textContent = sourceParts.join(" / ") || "transcript";
-  top.append(source);
+  const doneButton = document.createElement("button");
+  doneButton.className = item.state === "done" ? "done-row is-done" : "done-row";
+  doneButton.type = "button";
+  doneButton.setAttribute("aria-label", "mark row done");
+  doneButton.textContent = "done";
+  doneButton.addEventListener("click", () => markDone(item));
+  actions.append(doneButton);
 
   const deleteButton = document.createElement("button");
   deleteButton.className = confirmDeleteId === item.id ? "delete-row is-confirming" : "delete-row";
   deleteButton.type = "button";
   deleteButton.setAttribute("aria-label", confirmDeleteId === item.id ? "confirm delete row" : "delete row");
-  deleteButton.textContent = confirmDeleteId === item.id ? "delete?" : "x";
+  deleteButton.textContent = confirmDeleteId === item.id ? "delete?" : "delete";
   deleteButton.addEventListener("click", () => deleteItem(item));
-  top.append(deleteButton);
+  actions.append(deleteButton);
+
+  const sections = document.createElement("div");
+  sections.className = "todo-sections";
+
+  const fixSection = document.createElement("section");
+  fixSection.className = "todo-section";
+
+  const fixLabel = document.createElement("div");
+  fixLabel.className = "todo-section-label";
+  fixLabel.textContent = "fix";
+
+  const meta = document.createElement("div");
+  meta.className = "todo-meta";
+  meta.textContent = fixMeta(item);
 
   const todo = document.createElement("textarea");
-  todo.className = "todo-input";
-  todo.value = todoBody(item);
+  todo.className = "fix-input";
+  todo.value = fixBody(item);
   todo.spellcheck = true;
-  todo.setAttribute("aria-label", "todo");
+  todo.setAttribute("aria-label", "fix");
   todo.addEventListener("input", () => {
-    const patch = splitTodoBody(todo.value);
+    const patch = splitFixBody(todo.value);
     item.task = patch.task;
     item.details = patch.details;
     item.why = patch.why;
@@ -193,41 +199,25 @@ function buildTodoCell(item) {
     scheduleSave(item.id, patch);
   });
   requestAnimationFrame(() => autosize(todo));
-  cell.append(top, todo);
+  fixSection.append(fixLabel);
+  if (meta.textContent) fixSection.append(meta);
+  fixSection.append(todo);
 
-  if (item.evidence?.length) {
-    const quote = document.createElement("blockquote");
-    quote.textContent = item.evidence[0];
-    cell.append(quote);
-  }
+  const quoteSection = document.createElement("section");
+  quoteSection.className = "todo-section";
 
-  if (item.openQuestions?.length) {
-    const questions = document.createElement("div");
-    questions.className = "questions";
-    questions.textContent = item.openQuestions.join(" / ");
-    cell.append(questions);
-  }
+  const quoteLabel = document.createElement("div");
+  quoteLabel.className = "todo-section-label";
+  quoteLabel.textContent = "quote";
 
-  return cell;
-}
+  const quote = document.createElement("blockquote");
+  quote.className = "quote-block";
+  quote.textContent = item.evidence?.length ? item.evidence[0] : "no quote saved";
 
-function buildDateTimeCell(item) {
-  const cell = document.createElement("td");
-  cell.className = "date-time-cell";
+  quoteSection.append(quoteLabel, quote);
+  sections.append(fixSection, quoteSection);
+  cell.append(actions, sections);
 
-  const date = document.createElement("input");
-  date.className = "date-input";
-  date.type = "date";
-  date.value = formatDate(item.dateAdded);
-  date.setAttribute("aria-label", "date");
-  date.addEventListener("input", () => {
-    item.dateAdded = date.value;
-    scheduleSave(item.id, { dateAdded: date.value });
-  });
-
-  const time = makeInput(item, "timeEstimate", "time-input");
-  time.placeholder = "time";
-  cell.append(date, time);
   return cell;
 }
 
@@ -291,7 +281,6 @@ function buildRow(item) {
   row.dataset.id = item.id;
   row.append(
     buildTodoCell(item),
-    buildDateTimeCell(item),
     buildScoreCell(item, "easeScore", "ease score"),
     buildScoreCell(item, "disneyScore", "disney score"),
     buildTotalCell(item),
@@ -299,13 +288,48 @@ function buildRow(item) {
   return row;
 }
 
+function sortValue(item, key) {
+  if (key === "todo") return fixBody(item).toLowerCase();
+  if (key === "ease") return scoreValue(item.easeScore);
+  if (key === "disney") return scoreValue(item.disneyScore);
+  return totalScore(item);
+}
+
+function sortedItems() {
+  const activeKey = sortState.key || "total";
+  const direction = sortState.key ? sortState.direction : "desc";
+  return [...items].sort((a, b) => {
+    const left = sortValue(a, activeKey);
+    const right = sortValue(b, activeKey);
+    let result = 0;
+    if (typeof left === "string" || typeof right === "string") {
+      result = String(left).localeCompare(String(right));
+    } else {
+      result = left - right;
+    }
+    return direction === "asc" ? result : -result;
+  });
+}
+
+function updateSortHeaders() {
+  sortButtons.forEach((button) => {
+    const active = button.dataset.sortKey === sortState.key;
+    const th = button.closest("th");
+    button.dataset.active = active ? "true" : "false";
+    button.dataset.dir = active ? sortState.direction : "";
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+    if (th) th.setAttribute("aria-sort", active ? (sortState.direction === "asc" ? "ascending" : "descending") : "none");
+  });
+}
+
 function renderItems() {
-  const sorted = [...items].sort((a, b) => totalScore(b) - totalScore(a));
+  updateSortHeaders();
+  const sorted = sortedItems();
   if (!sorted.length) {
     const row = document.createElement("tr");
     row.className = "empty-row";
     const cell = document.createElement("td");
-    cell.colSpan = 5;
+    cell.colSpan = 4;
     cell.textContent = "no todo rows yet";
     row.append(cell);
     itemsEl.replaceChildren(row);
@@ -425,6 +449,18 @@ async function analyzeTranscript() {
 }
 
 analyzeButton.addEventListener("click", analyzeTranscript);
+
+sortButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const key = button.dataset.sortKey || "total";
+    if (sortState.key === key) {
+      sortState.direction = sortState.direction === "desc" ? "asc" : "desc";
+    } else {
+      sortState = { key, direction: key === "todo" ? "asc" : "desc" };
+    }
+    renderItems();
+  });
+});
 
 document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && document.activeElement === transcriptInput) {

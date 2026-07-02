@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>todo.aolabs.io</title>
   <link rel="icon" href="/favicon.svg?v=20260702-brief-stack">
-  <link rel="stylesheet" href="/styles.css?v=20260702-delete-transcripts">
+  <link rel="stylesheet" href="/styles.css?v=20260702-sort-fix">
 </head>
 <body>
   <header class="topbar">
@@ -32,23 +32,21 @@
         <table>
           <colgroup>
             <col class="col-todo">
-            <col class="col-date-time">
             <col class="col-ease">
             <col class="col-disney">
             <col class="col-total">
           </colgroup>
           <thead>
             <tr>
-              <th>todo</th>
-              <th>date / time</th>
-              <th>ease /100</th>
-              <th>disney /100</th>
-              <th>total</th>
+              <th aria-sort="none"><button class="sort-button" type="button" data-sort-key="todo">todo</button></th>
+              <th aria-sort="none"><button class="sort-button" type="button" data-sort-key="ease">ease /100</button></th>
+              <th aria-sort="none"><button class="sort-button" type="button" data-sort-key="disney">disney /100</button></th>
+              <th aria-sort="none"><button class="sort-button" type="button" data-sort-key="total">total</button></th>
             </tr>
           </thead>
           <tbody id="items">
             <tr class="loading-row">
-              <td colspan="5">loading</td>
+              <td colspan="4">loading</td>
             </tr>
           </tbody>
         </table>
@@ -65,6 +63,6 @@
     </section>
   </main>
 
-  <script src="/app.js?v=20260702-delete-transcripts"></script>
+  <script src="/app.js?v=20260702-sort-fix"></script>
 </body>
 </html>
