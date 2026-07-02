@@ -58,6 +58,21 @@ function formatDate(value) {
   return text.slice(0, 10);
 }
 
+function formatAddedAt(item) {
+  const created = safeText(item.createdAt);
+  const time = Date.parse(created);
+  if (Number.isFinite(time)) {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "America/New_York",
+    }).format(new Date(time));
+  }
+  return formatDate(item.dateAdded);
+}
+
 function compactParts(parts) {
   return parts
     .map((part) => safeText(part).trim())
@@ -80,7 +95,7 @@ function splitFixBody(value) {
 }
 
 function fixMeta(item) {
-  return [formatDate(item.dateAdded), safeText(item.timeEstimate).trim()]
+  return [formatAddedAt(item), safeText(item.timeEstimate).trim()]
     .filter(Boolean)
     .join(" / ");
 }
@@ -535,16 +550,25 @@ async function analyzeTranscript() {
 
 analyzeButton.addEventListener("click", analyzeTranscript);
 
+function applySortClick(key) {
+  if (sortState.key === key) {
+    sortState.direction = sortState.direction === "desc" ? "asc" : "desc";
+  } else {
+    sortState = { key, direction: "desc" };
+  }
+  renderItems();
+}
+
 sortButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    const key = button.dataset.sortKey || "total";
-    if (sortState.key === key) {
-      sortState.direction = sortState.direction === "desc" ? "asc" : "desc";
-    } else {
-      sortState = { key, direction: "desc" };
-    }
-    renderItems();
+  const key = button.dataset.sortKey || "total";
+  const th = button.closest("th");
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    applySortClick(key);
   });
+  if (th) {
+    th.addEventListener("click", () => applySortClick(key));
+  }
 });
 
 document.addEventListener("keydown", (event) => {
