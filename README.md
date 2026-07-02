@@ -10,7 +10,7 @@ Shape:
 - rows stay editable and reviewable
 - table columns: todo, ease /100, Disney /100, total
 - table header shows the current total number of todos
-- clicking a table header sorts that column; numeric columns sort high-to-low first, then low-to-high
+- clicking the todo header sorts by date added, newest-to-oldest first and then oldest-to-newest; numeric columns sort high-to-low first, then low-to-high
 - each todo cell renders the action/context/date/time estimate followed by a quote block formatted as `Speaker: exact quote`
 - row state is not a dropdown; the row has a direct `done` action
 - total score is computed as `easeScore + disneyScore`

@@ -36,6 +36,13 @@ function totalScore(item) {
   return scoreValue(item.easeScore) + scoreValue(item.disneyScore);
 }
 
+function addedTimeValue(item) {
+  const createdTime = Date.parse(safeText(item.createdAt));
+  if (Number.isFinite(createdTime)) return createdTime;
+  const dateTime = Date.parse(safeText(item.dateAdded));
+  return Number.isFinite(dateTime) ? dateTime : 0;
+}
+
 function todoCountLabel(count) {
   const safeCount = Math.max(0, Number(count) || 0);
   return `${safeCount} ${safeCount === 1 ? "todo" : "todos"}`;
@@ -327,7 +334,7 @@ function buildRow(item) {
 }
 
 function sortValue(item, key) {
-  if (key === "todo") return fixBody(item).toLowerCase();
+  if (key === "todo") return addedTimeValue(item);
   if (key === "ease") return scoreValue(item.easeScore);
   if (key === "disney") return scoreValue(item.disneyScore);
   return totalScore(item);
@@ -534,7 +541,7 @@ sortButtons.forEach((button) => {
     if (sortState.key === key) {
       sortState.direction = sortState.direction === "desc" ? "asc" : "desc";
     } else {
-      sortState = { key, direction: key === "todo" ? "asc" : "desc" };
+      sortState = { key, direction: "desc" };
     }
     renderItems();
   });
