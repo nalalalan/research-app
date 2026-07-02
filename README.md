@@ -23,6 +23,8 @@ Correctness guardrails:
 - every AI row includes source speaker, evidence quote, confidence, and review state
 - evidence quotes are checked against the transcript chunk
 - unsupported evidence lowers confidence and marks the row `needs_evidence`
+- AI must not generate a question list for Alan; ambiguous discussion without a concrete next step is skipped
+- interrupted in-flight analysis records are marked failed on restart instead of staying stuck as analyzing
 
 Runtime:
 
@@ -39,7 +41,7 @@ Runtime:
 Railway variables:
 
 - `OPENAI_API_KEY`
-- `TODO_OPENAI_MODEL` or `OPENAI_MODEL`, default `gpt-5-mini`
-- `TODO_OPENAI_REASONING_EFFORT`, default `medium`
-- `TODO_ANALYSIS_MAX_OUTPUT_TOKENS`, default `12000`
+- `TODO_OPENAI_MODEL` or `OPENAI_MODEL`, default `gpt-5.5-pro`
+- `TODO_OPENAI_REASONING_EFFORT`, default `high`
+- `TODO_ANALYSIS_MAX_OUTPUT_TOKENS`, default `32000`
 - `TODO_STATE_PATH`, optional; Railway volume should normally use `/data/todo_state.json`

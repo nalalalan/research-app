@@ -528,6 +528,10 @@ blockquote {
   color: #514c46;
 }
 
+.transcript-basis.is-error {
+  color: var(--rust);
+}
+
 .pdf-link {
   display: inline-flex;
   width: max-content;

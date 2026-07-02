@@ -353,16 +353,19 @@ function renderTranscripts() {
 
     const meta = document.createElement("div");
     meta.className = "transcript-meta";
+    const statusText =
+      entry.status === "failed" ? "analysis failed" : entry.status === "analyzing" ? "analysis running" : "";
     const parts = [
       entry.meetingDateTime || "date not stated",
       `${entry.itemCount || 0} rows`,
       `${(entry.characterCount || 0).toLocaleString()} chars`,
+      statusText,
     ];
-    meta.textContent = parts.join(" / ");
+    meta.textContent = parts.filter(Boolean).join(" / ");
 
     const basis = document.createElement("div");
-    basis.className = "transcript-basis";
-    basis.textContent = entry.metadataBasis || "";
+    basis.className = entry.status === "failed" ? "transcript-basis is-error" : "transcript-basis";
+    basis.textContent = entry.status === "failed" ? entry.error || "analysis failed" : entry.metadataBasis || "";
 
     const link = document.createElement("a");
     link.className = "pdf-link";

@@ -23,13 +23,13 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 OPENAI_API_KEY = os.getenv("TODO_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
-OPENAI_MODEL = os.getenv("TODO_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5-mini"
-OPENAI_REASONING_EFFORT = os.getenv("TODO_OPENAI_REASONING_EFFORT", "medium").strip() or "medium"
+OPENAI_MODEL = os.getenv("TODO_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.5-pro"
+OPENAI_REASONING_EFFORT = os.getenv("TODO_OPENAI_REASONING_EFFORT", "high").strip() or "high"
 MAX_TRANSCRIPT_CHARS = int(os.getenv("TODO_MAX_TRANSCRIPT_CHARS", "240000"))
 CHUNK_CHARS = int(os.getenv("TODO_CHUNK_CHARS", "28000"))
 CHUNK_OVERLAP_CHARS = int(os.getenv("TODO_CHUNK_OVERLAP_CHARS", "900"))
 MAX_ITEMS_PER_CHUNK = int(os.getenv("TODO_MAX_ITEMS_PER_CHUNK", "18"))
-ANALYSIS_MAX_OUTPUT_TOKENS = int(os.getenv("TODO_ANALYSIS_MAX_OUTPUT_TOKENS", "12000"))
+ANALYSIS_MAX_OUTPUT_TOKENS = int(os.getenv("TODO_ANALYSIS_MAX_OUTPUT_TOKENS", "32000"))
 STATE_SCHEMA = "transcript_todo_v1"
 
 
@@ -109,6 +109,18 @@ def _save_state(state: dict[str, Any]) -> None:
     state.setdefault("legacyItems", [])
     state["updatedAt"] = _now()
     STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def _mark_interrupted_analyses() -> None:
+    state = _load_state()
+    changed = False
+    for transcript in state.get("transcripts", []):
+        if transcript.get("status") == "analyzing":
+            transcript["status"] = "failed"
+            transcript["error"] = "analysis was interrupted before rows were saved"
+            changed = True
+    if changed:
+        _save_state(state)
 
 
 def _safe_text(value: Any, limit: int = 5000) -> str:
@@ -658,6 +670,11 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    _mark_interrupted_analyses()
 
 
 @app.get("/health")
