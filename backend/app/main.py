@@ -27,10 +27,12 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 OPENAI_API_KEY = os.getenv("TODO_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
 OPENAI_MODEL = os.getenv("TODO_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.5"
 OPENAI_REASONING_EFFORT = os.getenv("TODO_OPENAI_REASONING_EFFORT", "medium").strip() or "medium"
+SCORING_REASONING_EFFORT = os.getenv("TODO_SCORING_REASONING_EFFORT", "high").strip() or "high"
 MAX_TRANSCRIPT_CHARS = int(os.getenv("TODO_MAX_TRANSCRIPT_CHARS", "240000"))
 CHUNK_CHARS = int(os.getenv("TODO_CHUNK_CHARS", "18000"))
 CHUNK_OVERLAP_CHARS = int(os.getenv("TODO_CHUNK_OVERLAP_CHARS", "700"))
 MAX_ITEMS_PER_CHUNK = int(os.getenv("TODO_MAX_ITEMS_PER_CHUNK", "18"))
+MAX_SCORE_CALIBRATION_ITEMS = int(os.getenv("TODO_MAX_SCORE_CALIBRATION_ITEMS", "70"))
 ANALYSIS_MAX_OUTPUT_TOKENS = int(os.getenv("TODO_ANALYSIS_MAX_OUTPUT_TOKENS", "32000"))
 STALE_ANALYSIS_SECONDS = int(os.getenv("TODO_STALE_ANALYSIS_SECONDS", "45"))
 STATE_SCHEMA = "transcript_todo_v1"
@@ -583,6 +585,143 @@ def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]
     return [seen[key] for key in order]
 
 
+def _score_calibration_instructions() -> str:
+    return "\n".join(
+        [
+            "You calibrate easeScore and disneyScore for Alan's transcript-derived todo list.",
+            "Do not add, remove, rename, merge, or split rows. Do not change the task meaning.",
+            "Use only the provided task, details, time estimate, speaker, and exact evidence quote.",
+            "The scores are estimates, but they must be source-bounded, internally consistent, and strict.",
+            "Use the full 0-100 scale. Do not cluster most items in the 80s unless the list truly supports it.",
+            "When evidence is ambiguous, lower the score instead of guessing upward.",
+            "easeScore rubric:",
+            "95-100 = can be finished immediately in under 10 minutes with no external dependency.",
+            "85-94 = 10-30 minutes; simple edit/check with a clear target.",
+            "70-84 = 30-60 minutes; clear task but needs focused work or source lookup.",
+            "50-69 = 1-3 hours or requires real reasoning, figure work, data work, or careful writing.",
+            "30-49 = half day or more, ambiguous, externally dependent, or requires substantial reanalysis.",
+            "10-29 = blocked by missing evidence, access, advisor/tool dependency, build, experiment, or unclear acceptance.",
+            "0-9 = not actionable from the transcript.",
+            "disneyScore rubric:",
+            "95-100 = direct major progress toward Alan's Disney/Imagineering-style future: submission-critical result, claim, figure, physical-system breakthrough, portfolio proof, or external evaluation artifact.",
+            "85-94 = significant paper, research, mechanism, prototype, or career-positioning progress.",
+            "70-84 = important supporting research progress: useful figure, data cleanup, caption, citation, clarity, or evidence path.",
+            "50-69 = useful polish, organization, admin, or indirect support for research/career goals.",
+            "30-49 = minor local cleanup or low-leverage support.",
+            "10-29 = marginal connection to research, paper, future goals, or life stability.",
+            "0-9 = no clear link to Alan's research/career/future goals.",
+            "why must be one compact sentence explaining both scores with concrete basis.",
+            "Do not write motivational copy. Do not use visible labels like Ease:, Disney:, Why:, Recommendation:, or Score basis:.",
+            "Do not start many rows with the same phrase. Vary naturally and be precise.",
+            "Return JSON only through the schema.",
+        ]
+    )
+
+
+async def _calibrate_candidate_scores(
+    transcript_name: str,
+    candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not OPENAI_API_KEY or not candidates:
+        return candidates
+    limited_candidates = candidates[:MAX_SCORE_CALIBRATION_ITEMS]
+    candidate_payload: list[dict[str, Any]] = []
+    for index, candidate in enumerate(limited_candidates):
+        candidate_id = str(candidate.get("calibrationId") or f"c{index + 1}")
+        candidate["calibrationId"] = candidate_id
+        candidate_payload.append(
+            {
+                "candidateId": candidate_id,
+                "task": _safe_text(candidate.get("task"), 500),
+                "details": _safe_text(candidate.get("details"), 1800),
+                "sourceSpeaker": _safe_text(candidate.get("sourceSpeaker"), 120),
+                "timeEstimate": _safe_text(candidate.get("timeEstimate"), 80),
+                "currentEaseScore": _score(candidate.get("easeScore")),
+                "currentDisneyScore": _score(candidate.get("disneyScore")),
+                "currentWhy": _safe_text(candidate.get("why"), 600),
+                "evidenceQuote": _safe_text((candidate.get("evidence") or [""])[0], 500),
+                "confidence": _safe_text(candidate.get("confidence"), 20),
+            }
+        )
+
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["items"],
+        "properties": {
+            "items": {
+                "type": "array",
+                "maxItems": len(candidate_payload),
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["candidateId", "easeScore", "disneyScore", "why"],
+                    "properties": {
+                        "candidateId": {"type": "string"},
+                        "easeScore": {"type": "integer", "minimum": 0, "maximum": 100},
+                        "disneyScore": {"type": "integer", "minimum": 0, "maximum": 100},
+                        "why": {"type": "string"},
+                    },
+                },
+            }
+        },
+    }
+    request_body = {
+        "model": OPENAI_MODEL,
+        "store": False,
+        "reasoning": {"effort": SCORING_REASONING_EFFORT},
+        "max_output_tokens": min(18000, 900 + len(candidate_payload) * 220),
+        "instructions": _score_calibration_instructions(),
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": json.dumps(
+                            {
+                                "transcriptTitle": transcript_name or "untitled transcript",
+                                "items": candidate_payload,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    }
+                ],
+            }
+        ],
+        "text": {"format": {"type": "json_schema", "name": "todo_score_calibration", "strict": True, "schema": schema}},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(160.0, connect=20.0)) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/responses",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                json=request_body,
+            )
+    except httpx.HTTPError:
+        return candidates
+    if response.status_code >= 400:
+        return candidates
+    try:
+        payload = _parse_json_object(_extract_response_text(response.json()))
+    except Exception:
+        return candidates
+    scored = payload.get("items", [])
+    if not isinstance(scored, list):
+        return candidates
+    by_id = {str(entry.get("candidateId", "")): entry for entry in scored if isinstance(entry, dict)}
+    for candidate in limited_candidates:
+        entry = by_id.get(str(candidate.get("calibrationId", "")))
+        if not entry:
+            continue
+        candidate["easeScore"] = _score(entry.get("easeScore"))
+        candidate["disneyScore"] = _score(entry.get("disneyScore"))
+        why = _safe_text(entry.get("why"), 1200)
+        if why:
+            candidate["why"] = why
+    return candidates
+
+
 async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chunk_count: int) -> list[dict[str, Any]]:
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=503, detail="AI analysis is not configured")
@@ -732,6 +871,7 @@ async def _analyze_transcript(transcript_id: str, name: str, text: str) -> list[
         chunk_candidates = await _analyze_chunk(name, chunk, index, len(chunks))
         all_candidates.extend(chunk_candidates)
     candidates = _dedupe_candidates(all_candidates)
+    candidates = await _calibrate_candidate_scores(name, candidates)
     now = _now()
     return [
         {
@@ -939,6 +1079,73 @@ async def retry_transcript_analysis(transcript_id: str) -> dict[str, Any]:
     state_items = state.get("items", [])
     return {
         "items": [_compact_item(item) for item in new_items],
+        "allItems": [_compact_item(item) for item in state_items],
+        "allTranscripts": [_compact_transcript(entry, state_items) for entry in state.get("transcripts", [])],
+        "updatedAt": state["updatedAt"],
+    }
+
+
+@app.post("/api/todo/transcripts/{transcript_id}/rescore")
+async def rescore_transcript_items(transcript_id: str) -> dict[str, Any]:
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=503, detail="AI analysis is not configured")
+    state = _load_state_for_read()
+    transcript = next(
+        (entry for entry in state.get("transcripts", []) if str(entry.get("id")) == transcript_id),
+        None,
+    )
+    if not transcript:
+        raise HTTPException(status_code=404, detail="not found")
+    linked_items = [
+        item
+        for item in state.get("items", [])
+        if str(item.get("sourceTranscriptId", "")) == transcript_id
+    ]
+    if not linked_items:
+        raise HTTPException(status_code=400, detail="no todo rows to rescore")
+
+    candidates = []
+    for item in linked_items:
+        evidence = item.get("evidence")
+        if not isinstance(evidence, list):
+            evidence = []
+        candidates.append(
+            {
+                "calibrationId": str(item.get("id", "")),
+                "task": _safe_text(item.get("task"), 800),
+                "details": _safe_text(item.get("details"), 6000),
+                "sourceSpeaker": _safe_text(item.get("sourceSpeaker"), 120),
+                "timeEstimate": _safe_text(item.get("timeEstimate"), 80),
+                "easeScore": _score(item.get("easeScore")),
+                "disneyScore": _score(item.get("disneyScore")),
+                "why": _safe_text(item.get("why"), 1200),
+                "evidence": [_safe_text(entry, 500) for entry in evidence[:3]],
+                "confidence": _safe_text(item.get("confidence") or "manual", 24),
+            }
+        )
+    calibrated = await _calibrate_candidate_scores(_safe_text(transcript.get("name"), 180), candidates)
+    by_id = {str(candidate.get("calibrationId", "")): candidate for candidate in calibrated}
+    now = _now()
+    changed = 0
+    for item in state.get("items", []):
+        candidate = by_id.get(str(item.get("id", "")))
+        if not candidate:
+            continue
+        old = (_score(item.get("easeScore")), _score(item.get("disneyScore")), _safe_text(item.get("why"), 1200))
+        item["easeScore"] = _score(candidate.get("easeScore"))
+        item["disneyScore"] = _score(candidate.get("disneyScore"))
+        item["why"] = _safe_text(candidate.get("why"), 1200)
+        item["updatedAt"] = now
+        new = (_score(item.get("easeScore")), _score(item.get("disneyScore")), _safe_text(item.get("why"), 1200))
+        if new != old:
+            changed += 1
+    _save_state(state)
+    state_items = state.get("items", [])
+    return {
+        "status": "ok",
+        "rescored": len(linked_items),
+        "changed": changed,
+        "items": [_compact_item(item) for item in linked_items],
         "allItems": [_compact_item(item) for item in state_items],
         "allTranscripts": [_compact_transcript(entry, state_items) for entry in state.get("transcripts", [])],
         "updatedAt": state["updatedAt"],

@@ -36,6 +36,7 @@ Runtime:
 - `GET /api/todo/items` returns rows and transcript summaries with PDF links.
 - `POST /api/todo/transcripts/analyze` stores a transcript and appends AI-extracted rows.
 - `POST /api/todo/transcripts/{transcript_id}/retry` retries analysis for a saved failed transcript.
+- `POST /api/todo/transcripts/{transcript_id}/rescore` recalibrates existing row scores against the current scoring rubric.
 - `PATCH /api/todo/items/{item_id}` edits row fields and review state.
 - `DELETE /api/todo/items/{item_id}` removes a row.
 - `DELETE /api/todo/transcripts/{transcript_id}` removes a saved transcript and its generated rows.
@@ -47,6 +48,7 @@ Railway variables:
 - `OPENAI_API_KEY`
 - `TODO_OPENAI_MODEL` or `OPENAI_MODEL`, default `gpt-5.5`
 - `TODO_OPENAI_REASONING_EFFORT`, default `medium`
+- `TODO_SCORING_REASONING_EFFORT`, default `high`
 - `TODO_CHUNK_CHARS`, default `18000`
 - `TODO_CHUNK_OVERLAP_CHARS`, default `700`
 - `TODO_ANALYSIS_MAX_OUTPUT_TOKENS`, default `32000`
