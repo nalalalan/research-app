@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import io
 import json
 import os
@@ -31,7 +32,9 @@ CHUNK_CHARS = int(os.getenv("TODO_CHUNK_CHARS", "18000"))
 CHUNK_OVERLAP_CHARS = int(os.getenv("TODO_CHUNK_OVERLAP_CHARS", "700"))
 MAX_ITEMS_PER_CHUNK = int(os.getenv("TODO_MAX_ITEMS_PER_CHUNK", "18"))
 ANALYSIS_MAX_OUTPUT_TOKENS = int(os.getenv("TODO_ANALYSIS_MAX_OUTPUT_TOKENS", "32000"))
+STALE_ANALYSIS_SECONDS = int(os.getenv("TODO_STALE_ANALYSIS_SECONDS", "45"))
 STATE_SCHEMA = "transcript_todo_v1"
+ACTIVE_ANALYSES: set[str] = set()
 
 
 def _state_path() -> Path:
@@ -122,6 +125,37 @@ def _mark_interrupted_analyses() -> None:
             changed = True
     if changed:
         _save_state(state)
+
+
+def _seconds_since(value: Any) -> float:
+    try:
+        created = datetime.strptime(str(value), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except Exception:
+        return 1_000_000.0
+    return max(0.0, datetime.now(timezone.utc).timestamp() - created.timestamp())
+
+
+def _mark_disconnected_analyses(state: dict[str, Any]) -> bool:
+    changed = False
+    for transcript in state.get("transcripts", []):
+        transcript_id = str(transcript.get("id", ""))
+        if transcript.get("status") != "analyzing":
+            continue
+        if transcript_id in ACTIVE_ANALYSES:
+            continue
+        if _seconds_since(transcript.get("createdAt")) < STALE_ANALYSIS_SECONDS:
+            continue
+        transcript["status"] = "failed"
+        transcript["error"] = "analysis was interrupted before rows were saved; retry this saved transcription"
+        changed = True
+    return changed
+
+
+def _load_state_for_read() -> dict[str, Any]:
+    state = _load_state()
+    if _mark_disconnected_analyses(state):
+        _save_state(state)
+    return state
 
 
 def _safe_text(value: Any, limit: int = 5000) -> str:
@@ -775,7 +809,7 @@ async def index() -> FileResponse:
 
 @app.get("/api/todo/items")
 async def list_items() -> dict[str, Any]:
-    state = _load_state()
+    state = _load_state_for_read()
     state_items = state.get("items", [])
     return {
         "items": [_compact_item(item) for item in state_items],
@@ -816,17 +850,21 @@ async def analyze_transcript(body: AnalyzeTranscriptBody) -> dict[str, Any]:
     state.setdefault("transcripts", []).append(transcript)
     _save_state(state)
 
+    ACTIVE_ANALYSES.add(transcript_id)
     try:
-        new_items = await _analyze_transcript(transcript_id, transcript["name"], transcript_text)
-    except HTTPException as exc:
-        state = _load_state()
-        for entry in state.get("transcripts", []):
-            if str(entry.get("id")) == transcript_id:
-                entry["status"] = "failed"
-                entry["error"] = _safe_text(exc.detail, 400)
-                break
-        _save_state(state)
-        raise
+        try:
+            new_items = await _analyze_transcript(transcript_id, transcript["name"], transcript_text)
+        except HTTPException as exc:
+            state = _load_state()
+            for entry in state.get("transcripts", []):
+                if str(entry.get("id")) == transcript_id:
+                    entry["status"] = "failed"
+                    entry["error"] = _safe_text(exc.detail, 400)
+                    break
+            _save_state(state)
+            raise
+    finally:
+        ACTIVE_ANALYSES.discard(transcript_id)
 
     state = _load_state()
     for entry in state.get("transcripts", []):
@@ -851,7 +889,7 @@ async def analyze_transcript(body: AnalyzeTranscriptBody) -> dict[str, Any]:
 async def retry_transcript_analysis(transcript_id: str) -> dict[str, Any]:
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=503, detail="AI analysis is not configured")
-    state = _load_state()
+    state = _load_state_for_read()
     transcript: dict[str, Any] | None = None
     for entry in state.get("transcripts", []):
         if str(entry.get("id")) == transcript_id:
@@ -859,8 +897,10 @@ async def retry_transcript_analysis(transcript_id: str) -> dict[str, Any]:
             break
     if not transcript:
         raise HTTPException(status_code=404, detail="not found")
-    if transcript.get("status") != "failed":
-        raise HTTPException(status_code=400, detail="only failed transcriptions can be retried")
+    if transcript.get("status") == "analyzing" and transcript_id in ACTIVE_ANALYSES:
+        raise HTTPException(status_code=409, detail="analysis is still running")
+    if transcript.get("status") not in {"failed", "analyzing"}:
+        raise HTTPException(status_code=400, detail="only failed or interrupted transcriptions can be retried")
     text = _safe_text(transcript.get("text"), MAX_TRANSCRIPT_CHARS + 1)
     if not text:
         raise HTTPException(status_code=400, detail="saved transcription text is missing")
@@ -871,17 +911,21 @@ async def retry_transcript_analysis(transcript_id: str) -> dict[str, Any]:
     transcript["chunkCount"] = len(_chunk_transcript(text))
     _save_state(state)
 
+    ACTIVE_ANALYSES.add(transcript_id)
     try:
-        new_items = await _analyze_transcript(transcript_id, _safe_text(transcript.get("name"), 180), text)
-    except HTTPException as exc:
-        state = _load_state()
-        for entry in state.get("transcripts", []):
-            if str(entry.get("id")) == transcript_id:
-                entry["status"] = "failed"
-                entry["error"] = _safe_text(exc.detail, 400)
-                break
-        _save_state(state)
-        raise
+        try:
+            new_items = await _analyze_transcript(transcript_id, _safe_text(transcript.get("name"), 180), text)
+        except HTTPException as exc:
+            state = _load_state()
+            for entry in state.get("transcripts", []):
+                if str(entry.get("id")) == transcript_id:
+                    entry["status"] = "failed"
+                    entry["error"] = _safe_text(exc.detail, 400)
+                    break
+            _save_state(state)
+            raise
+    finally:
+        ACTIVE_ANALYSES.discard(transcript_id)
 
     state = _load_state()
     for entry in state.get("transcripts", []):
@@ -989,7 +1033,7 @@ async def transcript_pdf(transcript_id: str) -> Response:
 
 @app.get("/api/todo/summary")
 async def todo_summary() -> dict[str, Any]:
-    state = _load_state()
+    state = _load_state_for_read()
     items = [_compact_item(item) for item in state.get("items", [])]
     transcripts = state.get("transcripts", [])
     by_state: dict[str, int] = {}
