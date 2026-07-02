@@ -163,7 +163,6 @@ def _compact_item(item: dict[str, Any]) -> dict[str, Any]:
         "evidence": [_safe_text(entry, 500) for entry in evidence[:3]],
         "confidence": _safe_text(item.get("confidence") or "manual", 24),
         "state": _safe_text(item.get("state") or "active", 30),
-        "openQuestions": [_safe_text(entry, 220) for entry in (item.get("openQuestions") or [])[:3]],
         "createdAt": str(item.get("createdAt", "")),
         "updatedAt": str(item.get("updatedAt", "")),
     }
@@ -461,9 +460,6 @@ def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]
                 existing["evidence"].append(quote)
         if candidate.get("details") and candidate["details"] not in existing["details"]:
             existing["details"] = f"{existing['details']} {candidate['details']}".strip()
-        for question in candidate.get("openQuestions", []):
-            if question not in existing["openQuestions"] and len(existing["openQuestions"]) < 3:
-                existing["openQuestions"].append(question)
     return [seen[key] for key in order]
 
 
@@ -492,7 +488,6 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                         "why",
                         "evidenceQuote",
                         "confidence",
-                        "openQuestions",
                     ],
                     "properties": {
                         "task": {"type": "string"},
@@ -504,7 +499,6 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                         "why": {"type": "string"},
                         "evidenceQuote": {"type": "string"},
                         "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
-                        "openQuestions": {"type": "array", "maxItems": 3, "items": {"type": "string"}},
                     },
                 },
             }
@@ -532,8 +526,9 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                 "Extract only concrete action items that are supported by the transcript text.",
                 "Never invent a task, owner, speaker, date, priority, score, or context that is not supported by the transcript.",
                 "If the transcript says a topic was discussed but no action is implied, do not create a todo row.",
-                "If an action is ambiguous, create a row only when there is a real next step and put the uncertainty in openQuestions.",
-                "Dependent follow-up checks still count as todo rows when someone offers or requests them, such as checking a PDF after an edit, verifying a figure after export, or reviewing a citation after insertion. Mark the dependency in details or openQuestions instead of dropping the row.",
+                "If an action is ambiguous and no concrete next step is stated, do not create a todo row.",
+                "Do not generate questions for Alan to ask. Do not write a question list. If someone explicitly requested a follow-up check, write the check itself as the task or details.",
+                "Dependent follow-up checks still count as todo rows when someone offers or requests them, such as checking a PDF after an edit, verifying a figure after export, or reviewing a citation after insertion. Mark the dependency in details instead of dropping the row.",
                 "Use the speaker names in the transcript when they matter. sourceSpeaker should be the person who assigned, requested, volunteered, or clarified the action. Leave it blank only when the transcript has no speaker names.",
                 "task is the thing to be done, written as a direct concrete action.",
                 "details must include specific context: who said what, what was decided, and what source condition matters.",
@@ -600,7 +595,6 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                 "evidence": [quote] if quote else [],
                 "confidence": confidence,
                 "state": "needs_evidence" if quote and not verified else "review",
-                "openQuestions": [_safe_text(entry, 220) for entry in (raw.get("openQuestions") or [])[:3]],
             }
         )
     return candidates
@@ -629,7 +623,6 @@ async def _analyze_transcript(transcript_id: str, name: str, text: str) -> list[
             "evidence": candidate["evidence"],
             "confidence": candidate["confidence"],
             "state": candidate["state"],
-            "openQuestions": candidate["openQuestions"],
             "createdAt": now,
             "updatedAt": now,
         }

@@ -50,10 +50,7 @@ function compactParts(parts) {
 }
 
 function fixBody(item) {
-  const questions = Array.isArray(item.openQuestions) && item.openQuestions.length
-    ? `Question: ${item.openQuestions.join(" / ")}`
-    : "";
-  return compactParts([item.task, item.details, item.why, questions]);
+  return compactParts([item.task, item.details, item.why]);
 }
 
 function splitFixBody(value) {
