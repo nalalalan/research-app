@@ -190,6 +190,80 @@ def _quote_verified(transcript: str, quote: str) -> bool:
     return normalized_quote in _normalize_for_match(transcript)
 
 
+TODO_CATEGORIES = {"paper", "prototype", "phd"}
+
+
+def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
+    return any(keyword in text for keyword in keywords)
+
+
+def _todo_category(item: dict[str, Any]) -> str:
+    explicit = _safe_text(item.get("category"), 40).strip().lower()
+    if explicit in TODO_CATEGORIES:
+        return explicit
+    evidence = item.get("evidence")
+    if not isinstance(evidence, list):
+        evidence = []
+    text = " ".join(
+        [
+            _safe_text(item.get("task"), 800),
+            _safe_text(item.get("details"), 2000),
+            _safe_text(item.get("why"), 800),
+            " ".join(_safe_text(entry, 500) for entry in evidence if isinstance(entry, str)),
+        ]
+    ).lower()
+    if _contains_any(text, ("phd", "ph.d", "proposal", "dissertation", "thesis", "committee", "defense", "qualifying")):
+        return "phd"
+    if _contains_any(
+        text,
+        (
+            "paper",
+            "manuscript",
+            "abstract",
+            "caption",
+            "citation",
+            "reference",
+            "submission",
+            "journal",
+            "reviewer",
+            "figure",
+            "results",
+            "discussion",
+            "methods",
+            "section",
+            "latex",
+            "overleaf",
+            "pdf",
+            "chi",
+        ),
+    ):
+        return "paper"
+    if _contains_any(
+        text,
+        (
+            "prototype",
+            "build",
+            "valve",
+            "epm",
+            "magnet",
+            "magnetic",
+            "manifold",
+            "hardware",
+            "cad",
+            "fabricat",
+            "print",
+            "assembly",
+            "actuator",
+            "mechanism",
+            "test",
+            "measurement",
+            "experiment",
+        ),
+    ):
+        return "prototype"
+    return "phd"
+
+
 def _compact_item(item: dict[str, Any]) -> dict[str, Any]:
     legacy_task = item.get("task", item.get("item", ""))
     legacy_details = item.get("details", item.get("status", ""))
@@ -201,6 +275,7 @@ def _compact_item(item: dict[str, Any]) -> dict[str, Any]:
         "id": str(item.get("id", "")),
         "task": _safe_text(legacy_task, 800),
         "details": _safe_text(legacy_details, 6000),
+        "category": _todo_category(item),
         "dateAdded": _safe_text(item.get("dateAdded") or (created[:10] if created else ""), 40),
         "timeEstimate": _safe_text(item.get("timeEstimate"), 80),
         "easeScore": _score(item.get("easeScore")),
@@ -741,6 +816,7 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                     "required": [
                         "task",
                         "details",
+                        "category",
                         "sourceSpeaker",
                         "timeEstimate",
                         "easeScore",
@@ -752,6 +828,7 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                     "properties": {
                         "task": {"type": "string"},
                         "details": {"type": "string"},
+                        "category": {"type": "string", "enum": ["paper", "prototype", "phd"]},
                         "sourceSpeaker": {"type": "string"},
                         "timeEstimate": {"type": "string"},
                         "easeScore": {"type": "integer", "minimum": 0, "maximum": 100},
@@ -792,6 +869,7 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                 "Use the speaker names in the transcript when they matter. sourceSpeaker should be the person who assigned, requested, volunteered, or clarified the action. Leave it blank only when the transcript has no speaker names.",
                 "task is the thing to be done, written as a direct concrete action. Do not start the task with a speaker name; the speaker belongs in sourceSpeaker and the quote display.",
                 "details must include specific context: who said what, what was decided, and what source condition matters.",
+                "category must be exactly one of paper, prototype, or phd. Use paper for manuscript, CHI, PDF, figure, caption, citation, abstract, submission, and advisor-comment writing/revision work. Use prototype for physical build, valve, magnet, EPM, manifold, CAD, fabrication, hardware, experiment, measurement, actuation, and mechanism tasks. Use phd for proposal, dissertation, thesis, committee, defense, qualifying exam, degree-planning, or PhD program/admin work that is not primarily a paper edit or prototype/build task.",
                 "timeEstimate is a practical estimate such as 10 min, 30 min, 2 hr, half day, 1 day, or unknown.",
                 "easeScore is 0-100 for how easy this is to finish quickly. Very easy immediate tasks should score high. Long, ambiguous, blocked, or emotionally heavy tasks should score lower.",
                 "disneyScore is 0-100 for future-goal value, named after Alan's Disney/Imagineering goal but broader than literal Disney wording. Treat paper progress, research progress, mechanism/simulator progress, portfolio evidence, career positioning, life stability, goals, dreams, and current physical-system work as direct Disney-score evidence when the transcript supports that lane. Do not require the word Disney to appear for a paper or research task to score high. Do not give a negligible Disney score to paper, PDF, citation, figure, or research-support work merely because it is editing or checking; score minor polish moderate, claim/evidence/career-facing work high, and direct portfolio/research breakthroughs highest.",
@@ -852,6 +930,7 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
             {
                 "task": _safe_text(raw.get("task"), 800),
                 "details": _safe_text(raw.get("details"), 6000),
+                "category": _todo_category(raw),
                 "sourceSpeaker": _safe_text(raw.get("sourceSpeaker"), 120),
                 "timeEstimate": _safe_text(raw.get("timeEstimate"), 80),
                 "easeScore": _score(raw.get("easeScore")),
@@ -904,6 +983,7 @@ class AnalyzeTranscriptBody(BaseModel):
 class UpdateItemBody(BaseModel):
     task: str | None = Field(default=None, max_length=800)
     details: str | None = Field(default=None, max_length=6000)
+    category: str | None = Field(default=None, max_length=30)
     dateAdded: str | None = Field(default=None, max_length=40)
     timeEstimate: str | None = Field(default=None, max_length=80)
     easeScore: int | None = Field(default=None, ge=0, le=100)
@@ -1178,6 +1258,8 @@ async def update_item(item_id: str, body: UpdateItemBody) -> dict[str, Any]:
                 value = getattr(body, field)
                 if value is not None:
                     item[field] = value.strip()
+            if body.category is not None:
+                item["category"] = body.category.strip().lower() if body.category.strip().lower() in TODO_CATEGORIES else _todo_category(item)
             if body.easeScore is not None:
                 item["easeScore"] = _score(body.easeScore)
             if body.disneyScore is not None:

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>todo.aolabs.io</title>
   <link rel="icon" href="/favicon.svg?v=20260702-brief-stack">
-  <link rel="stylesheet" href="/styles.css?v=20260702-summary-count-retry">
+  <link rel="stylesheet" href="/styles.css?v=20260703-category-filters">
 </head>
 <body>
   <header class="topbar">
@@ -29,6 +29,11 @@
 
     <section class="table-shell" aria-label="todo table">
       <div class="table-head">
+        <div class="category-filters" aria-label="todo filters">
+          <button class="filter-button" type="button" data-category-filter="paper" aria-pressed="false">paper</button>
+          <button class="filter-button" type="button" data-category-filter="prototype" aria-pressed="false">prototype</button>
+          <button class="filter-button" type="button" data-category-filter="phd" aria-pressed="false">phd</button>
+        </div>
         <span id="todoCount" class="todo-count">0 todos</span>
       </div>
       <div class="table-scroll">
@@ -91,6 +96,6 @@
     </section>
   </main>
 
-  <script src="/app.js?v=20260702-active-done-count"></script>
+  <script src="/app.js?v=20260703-category-filters"></script>
 </body>
 </html>

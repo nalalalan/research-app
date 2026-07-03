@@ -8,6 +8,8 @@ Shape:
 - AI infers the transcript title/date-time from the transcript text
 - AI extracts only transcript-supported todo rows; rows are added automatically after analysis
 - rows stay editable and reviewable
+- every row has exactly one category: `paper`, `prototype`, or `phd`
+- table filters toggle those categories and filter both active and done rows
 - table columns: todo, ease /100, Disney /100, total
 - table header shows active and done counts as `__ active / __ done`
 - clicking the todo header cell sorts by date added, newest-to-oldest first and then oldest-to-newest; numeric columns sort high-to-low first, then low-to-high

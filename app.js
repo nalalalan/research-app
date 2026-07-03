@@ -8,8 +8,10 @@ const intakeStatus = document.querySelector("#intakeStatus");
 const todoCountEl = document.querySelector("#todoCount");
 const doneCountEl = document.querySelector("#doneCount");
 const sortButtons = [...document.querySelectorAll(".sort-button")];
+const categoryFilterButtons = [...document.querySelectorAll("[data-category-filter]")];
 
 const saveTimers = new Map();
+const CATEGORIES = ["paper", "prototype", "phd"];
 
 let items = [];
 let transcripts = [];
@@ -19,6 +21,7 @@ let confirmDeleteId = "";
 let confirmTranscriptDeleteId = "";
 let retryingTranscriptId = "";
 let sortState = { key: "", direction: "desc" };
+const categoryFilters = new Set();
 
 function setStatus(text, tone = "") {
   intakeStatus.textContent = text;
@@ -56,6 +59,15 @@ function doneTimeValue(item) {
 
 function isDone(item) {
   return safeText(item.state) === "done";
+}
+
+function itemCategory(item) {
+  const category = safeText(item.category).trim().toLowerCase();
+  return CATEGORIES.includes(category) ? category : "phd";
+}
+
+function passesCategoryFilter(item) {
+  return categoryFilters.size === 0 || categoryFilters.has(itemCategory(item));
 }
 
 function todoCountLabel(count) {
@@ -115,7 +127,7 @@ function splitFixBody(value) {
 }
 
 function fixMeta(item) {
-  return [formatAddedAt(item), safeText(item.timeEstimate).trim()]
+  return [itemCategory(item), formatAddedAt(item), safeText(item.timeEstimate).trim()]
     .filter(Boolean)
     .join(" / ");
 }
@@ -405,10 +417,22 @@ function updateSortHeaders() {
   });
 }
 
+function updateCategoryFilters() {
+  categoryFilterButtons.forEach((button) => {
+    const category = safeText(button.dataset.categoryFilter).trim().toLowerCase();
+    const active = categoryFilters.has(category);
+    button.dataset.active = active ? "true" : "false";
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
 function renderItems() {
   updateSortHeaders();
-  const activeItems = items.filter((item) => !isDone(item));
-  const doneItems = items.filter(isDone).sort((a, b) => doneTimeValue(b) - doneTimeValue(a));
+  updateCategoryFilters();
+  const activeItems = items.filter((item) => !isDone(item) && passesCategoryFilter(item));
+  const doneItems = items
+    .filter((item) => isDone(item) && passesCategoryFilter(item))
+    .sort((a, b) => doneTimeValue(b) - doneTimeValue(a));
   updateTodoCount(activeItems.length, doneItems.length);
   const sorted = sortedItems(activeItems);
   if (!sorted.length) {
@@ -598,6 +622,19 @@ sortButtons.forEach((button) => {
   if (th) {
     th.addEventListener("click", () => applySortClick(key));
   }
+});
+
+categoryFilterButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const category = safeText(button.dataset.categoryFilter).trim().toLowerCase();
+    if (!CATEGORIES.includes(category)) return;
+    if (categoryFilters.has(category)) {
+      categoryFilters.delete(category);
+    } else {
+      categoryFilters.add(category);
+    }
+    renderItems();
+  });
 });
 
 document.addEventListener("keydown", (event) => {

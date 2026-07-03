@@ -215,14 +215,46 @@ button {
 .table-head {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 12px;
   min-height: 40px;
   padding: 0 12px;
   border-bottom: 1px solid var(--line);
   background: #fbfaf5;
 }
 
+.category-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px 0;
+}
+
+.filter-button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(63, 128, 124, 0.18);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 760;
+  line-height: 1;
+  text-transform: lowercase;
+}
+
+.filter-button:hover,
+.filter-button:focus-visible,
+.filter-button[data-active="true"] {
+  border-color: rgba(63, 128, 124, 0.4);
+  background: rgba(63, 128, 124, 0.08);
+  color: var(--teal-deep);
+  outline: none;
+}
+
 .todo-count {
+  margin-left: auto;
   color: var(--muted);
   font-size: 12.5px;
   font-weight: 780;
@@ -651,5 +683,14 @@ blockquote {
 
   .row-actions {
     right: 9px;
+  }
+
+  .table-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .todo-count {
+    margin-left: 0;
   }
 }
