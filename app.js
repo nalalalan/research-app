@@ -42,6 +42,17 @@ const PAPER_ARTIFACT_KEYWORDS = [
   "diagram",
   "drawing",
   "illustration",
+  "plot",
+  "plots",
+  "graph",
+  "graphs",
+  "chart",
+  "charts",
+  "text",
+  "clarification",
+  "explanation",
+  "claim",
+  "characterization",
   "visual",
 ];
 const PAPER_HARD_OVERRIDE_KEYWORDS = [
@@ -68,7 +79,25 @@ const PAPER_HARD_OVERRIDE_KEYWORDS = [
   "diagram",
   "drawing",
   "illustration",
+  "plot",
+  "plots",
+  "graph",
+  "graphs",
+  "chart",
+  "charts",
+  "text",
+  "clarification",
+  "explanation",
+  "claim",
+  "characterization",
   "visual",
+];
+const PAPER_OUTPUT_KEYWORDS = [
+  ...PAPER_HARD_OVERRIDE_KEYWORDS,
+  "writeup",
+  "write-up",
+  "video explanation",
+  "result explanation",
 ];
 const PAPER_ACTION_KEYWORDS = [
   "add",
@@ -77,9 +106,12 @@ const PAPER_ACTION_KEYWORDS = [
   "draw",
   "edit",
   "explain",
+  "clarify",
   "include",
   "insert",
   "make",
+  "plot",
+  "present",
   "revise",
   "review",
   "show",
@@ -161,6 +193,10 @@ function includesAny(text, keywords) {
   return keywords.some((keyword) => text.includes(keyword));
 }
 
+function includesActionAndOutput(text) {
+  return includesAny(text, PAPER_ACTION_KEYWORDS) && includesAny(text, PAPER_OUTPUT_KEYWORDS);
+}
+
 function inferredCategory(item) {
   const taskText = safeText(item.task).toLowerCase();
   const evidenceText = Array.isArray(item.evidence) ? item.evidence.map(safeText).join(" ") : "";
@@ -177,7 +213,8 @@ function inferredCategory(item) {
   const hasPaperHardOverride = includesAny(text, PAPER_HARD_OVERRIDE_KEYWORDS);
   const hasPaperNamed = text.includes("paper") || text.includes("manuscript");
   const hasPaperAction = includesAny(text, PAPER_ACTION_KEYWORDS);
-  if ((hasPaperArtifact && !taskIsPhdAdmin) || hasPaperHardOverride || (hasPaperNamed && hasPaperAction && !taskIsPhdAdmin)) return "paper";
+  const taskIsPaperOutput = includesActionAndOutput(taskText);
+  if ((hasPaperArtifact && !taskIsPhdAdmin) || hasPaperHardOverride || (hasPaperNamed && hasPaperAction && !taskIsPhdAdmin) || taskIsPaperOutput) return "paper";
   if (includesAny(text, PROTOTYPE_KEYWORDS)) return "prototype";
   if (hasPhd) return "phd";
   return "";

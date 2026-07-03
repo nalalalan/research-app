@@ -8,7 +8,7 @@ Shape:
 - AI infers the transcript title/date-time from the transcript text
 - AI extracts only transcript-supported todo rows; rows are added automatically after analysis
 - rows stay editable and reviewable
-- every row has exactly one category: `paper`, `prototype`, or `phd`; paper figure/photo/cartoon/diagram tasks stay `paper` even when the meeting context is PhD or dissertation related
+- every row has exactly one category: `paper`, `prototype`, or `phd`; paper text/plot/figure/photo/cartoon/diagram tasks stay `paper` even when the meeting context mentions PhD, dissertation, valves, mechanisms, tests, or prototype hardware
 - table filters toggle those categories and filter both active and done rows
 - table columns: todo, ease /100, Disney /100, total
 - table header shows active and done counts as `__ active / __ done`
