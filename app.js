@@ -236,6 +236,16 @@ function todoCountLabel(count) {
   return `${safeCount} ${safeCount === 1 ? "todo" : "todos"}`;
 }
 
+function analysisResultLabel(payload) {
+  const added = Math.max(0, Number(payload.addedItemCount) || 0);
+  const merged = Math.max(0, Number(payload.mergedItemCount) || 0);
+  if (added && merged) return `added ${todoCountLabel(added)}, updated ${todoCountLabel(merged)}`;
+  if (added) return `added ${todoCountLabel(added)}`;
+  if (merged) return `updated ${todoCountLabel(merged)}`;
+  const fallback = Math.max(0, Number(payload.items?.length) || 0);
+  return fallback ? `updated ${todoCountLabel(fallback)}` : "saved transcription, no supported todos found";
+}
+
 function updateTodoCount(activeCount, doneCount) {
   if (todoCountEl) {
     todoCountEl.textContent = `${activeCount} active / ${doneCount} done`;
@@ -400,8 +410,7 @@ async function retryTranscript(entry) {
     items = payload.allItems || items;
     transcripts = payload.allTranscripts || transcripts;
     render();
-    const count = payload.items?.length || 0;
-    setStatus(count ? `added ${todoCountLabel(count)}` : "saved transcription, no supported todos found");
+    setStatus(analysisResultLabel(payload));
   } catch {
     await loadItems({ setReadyStatus: false });
     setStatus("analysis failed; saved transcription can be retried", "bad");
@@ -753,8 +762,7 @@ async function analyzeTranscript() {
     transcripts = payload.allTranscripts || transcripts;
     render();
     transcriptInput.value = "";
-    const count = payload.items?.length || 0;
-    setStatus(count ? `added ${todoCountLabel(count)}` : "saved transcription, no supported todos found");
+    setStatus(analysisResultLabel(payload));
   } catch {
     await reconcileAnalysisFailure(beforeItemCount, beforeTranscriptIds, "analysis failed");
   } finally {

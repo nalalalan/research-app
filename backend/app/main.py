@@ -747,32 +747,180 @@ def _render_transcript_pdf(transcript: dict[str, Any]) -> bytes:
 
 
 
+TODO_TOKEN_SYNONYMS = {
+    "colour": "color",
+    "colours": "color",
+    "colors": "color",
+    "bars": "bar",
+    "figures": "figure",
+    "plots": "plot",
+    "graphs": "graph",
+    "charts": "chart",
+    "pictures": "picture",
+    "photos": "photo",
+    "images": "image",
+    "planner": "planar",
+    "magenta": "pink",
+    "zero": "0",
+    "height": "height",
+}
+TODO_TOKEN_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "be",
+    "by",
+    "case",
+    "do",
+    "for",
+    "from",
+    "in",
+    "into",
+    "it",
+    "of",
+    "on",
+    "or",
+    "other",
+    "so",
+    "that",
+    "the",
+    "this",
+    "to",
+    "with",
+}
+TODO_ACTION_WORDS = {
+    "add",
+    "change",
+    "check",
+    "clean",
+    "correct",
+    "draw",
+    "edit",
+    "explain",
+    "fix",
+    "include",
+    "make",
+    "reduce",
+    "revise",
+    "show",
+    "update",
+    "write",
+}
+
+
+def _todo_tokens(text: str) -> set[str]:
+    tokens: set[str] = set()
+    for raw in re.findall(r"[a-z0-9]+", text.lower()):
+        token = TODO_TOKEN_SYNONYMS.get(raw, raw)
+        if len(token) < 2 and token != "0":
+            continue
+        if token in TODO_TOKEN_STOPWORDS or token in TODO_ACTION_WORDS:
+            continue
+        tokens.add(token)
+    return tokens
+
+
+def _figure_numbers(text: str) -> set[str]:
+    return set(re.findall(r"\bfig(?:ure)?\s*([0-9]+)\b", text.lower()))
+
+
+def _candidate_text(candidate: dict[str, Any]) -> str:
+    evidence = candidate.get("evidence")
+    if not isinstance(evidence, list):
+        evidence = []
+    return " ".join(
+        [
+            _safe_text(candidate.get("task"), 800),
+            _safe_text(candidate.get("details"), 2000),
+            " ".join(_safe_text(entry, 500) for entry in evidence if isinstance(entry, str)),
+        ]
+    )
+
+
 def _candidate_key(candidate: dict[str, Any]) -> str:
-    task = re.sub(r"[^a-z0-9]+", " ", str(candidate.get("task", "")).lower()).strip()
-    speaker = re.sub(r"[^a-z0-9]+", " ", str(candidate.get("sourceSpeaker", "")).lower()).strip()
-    return f"{speaker}|{task[:140]}"
+    category = _todo_category(candidate)
+    tokens = sorted(_todo_tokens(_candidate_text(candidate)))
+    return f"{category}|{' '.join(tokens[:14])}"
+
+
+def _same_todo(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    left_category = _todo_category(left)
+    right_category = _todo_category(right)
+    if left_category != right_category:
+        return False
+    left_text = _candidate_text(left)
+    right_text = _candidate_text(right)
+    left_figures = _figure_numbers(left_text)
+    right_figures = _figure_numbers(right_text)
+    if left_figures and right_figures and left_figures.isdisjoint(right_figures):
+        return False
+    left_tokens = _todo_tokens(left_text)
+    right_tokens = _todo_tokens(right_text)
+    if not left_tokens or not right_tokens:
+        return False
+    overlap = left_tokens & right_tokens
+    smaller = min(len(left_tokens), len(right_tokens))
+    union = len(left_tokens | right_tokens)
+    return len(overlap) >= 4 and (len(overlap) / smaller >= 0.58 or len(overlap) / union >= 0.42)
+
+
+def _merge_todo(existing: dict[str, Any], incoming: dict[str, Any]) -> None:
+    existing["easeScore"] = max(_score(existing.get("easeScore")), _score(incoming.get("easeScore")))
+    existing["disneyScore"] = max(_score(existing.get("disneyScore")), _score(incoming.get("disneyScore")))
+    incoming_evidence = incoming.get("evidence") if isinstance(incoming.get("evidence"), list) else []
+    existing_evidence = existing.get("evidence") if isinstance(existing.get("evidence"), list) else []
+    existing["evidence"] = existing_evidence
+    for quote in incoming_evidence:
+        safe_quote = _safe_text(quote, 500)
+        if safe_quote and safe_quote not in existing["evidence"] and len(existing["evidence"]) < 5:
+            existing["evidence"].append(safe_quote)
+    incoming_details = _safe_text(incoming.get("details"), 2000)
+    existing_details = _safe_text(existing.get("details"), 6000)
+    if incoming_details and incoming_details.lower() not in existing_details.lower():
+        existing["details"] = f"{existing_details} {incoming_details}".strip()
+    incoming_why = _safe_text(incoming.get("why"), 1200)
+    if incoming_why and incoming_why not in _safe_text(existing.get("why"), 1200):
+        existing["why"] = incoming_why if not existing.get("why") else _safe_text(existing.get("why"), 1200)
+    if not _safe_text(existing.get("timeEstimate"), 80) or _safe_text(existing.get("timeEstimate"), 80) == "unknown":
+        existing["timeEstimate"] = _safe_text(incoming.get("timeEstimate"), 80)
+    if not _safe_text(existing.get("sourceSpeaker"), 120):
+        existing["sourceSpeaker"] = _safe_text(incoming.get("sourceSpeaker"), 120)
+    existing["category"] = _todo_category(existing)
+    existing["updatedAt"] = _now()
 
 
 def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen: dict[str, dict[str, Any]] = {}
-    order: list[str] = []
+    merged: list[dict[str, Any]] = []
     for candidate in candidates:
-        key = _candidate_key(candidate)
-        if not key.strip("|"):
-            key = secrets.token_hex(8)
-        if key not in seen:
-            seen[key] = candidate
-            order.append(key)
+        match = next((existing for existing in merged if _same_todo(existing, candidate)), None)
+        if match is None:
+            merged.append(candidate)
             continue
-        existing = seen[key]
-        existing["easeScore"] = max(_score(existing.get("easeScore")), _score(candidate.get("easeScore")))
-        existing["disneyScore"] = max(_score(existing.get("disneyScore")), _score(candidate.get("disneyScore")))
-        for quote in candidate.get("evidence", []):
-            if quote and quote not in existing["evidence"] and len(existing["evidence"]) < 3:
-                existing["evidence"].append(quote)
-        if candidate.get("details") and candidate["details"] not in existing["details"]:
-            existing["details"] = f"{existing['details']} {candidate['details']}".strip()
-    return [seen[key] for key in order]
+        _merge_todo(match, candidate)
+    return merged
+
+
+def _merge_new_items(existing_items: list[dict[str, Any]], new_items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    added: list[dict[str, Any]] = []
+    merged: list[dict[str, Any]] = []
+    for item in new_items:
+        match = next(
+            (
+                existing
+                for existing in existing_items
+                if _safe_text(existing.get("state") or "active", 30) != "done" and _same_todo(existing, item)
+            ),
+            None,
+        )
+        if match is None:
+            existing_items.append(item)
+            added.append(item)
+            continue
+        _merge_todo(match, item)
+        merged.append(match)
+    return added, merged
 
 
 def _score_calibration_instructions() -> str:
@@ -976,6 +1124,7 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                 "You convert a private meeting transcript into a high-stakes todo table for Alan.",
                 "Extract only concrete action items that are supported by the transcript text.",
                 "Never invent a task, owner, speaker, date, priority, score, or context that is not supported by the transcript.",
+                "If the same todo is mentioned multiple times, return one row for it. Merge useful extra details, constraints, and evidence into that row; do not create another row just because the wording or speaker changed. If a later mention adds no new detail, ignore the duplicate mention.",
                 "If the transcript says a topic was discussed but no action is implied, do not create a todo row.",
                 "If an action is ambiguous and no concrete next step is stated, do not create a todo row.",
                 "Do not generate questions for Alan to ask. Do not write a question list. If someone explicitly requested a follow-up check, write the check itself as the task or details.",
@@ -1202,18 +1351,20 @@ async def analyze_transcript(body: AnalyzeTranscriptBody) -> dict[str, Any]:
         ACTIVE_ANALYSES.discard(transcript_id)
 
     state = _load_state()
+    state_items = state.setdefault("items", [])
+    added_items, merged_items = _merge_new_items(state_items, new_items)
     for entry in state.get("transcripts", []):
         if str(entry.get("id")) == transcript_id:
             entry["status"] = "complete"
-            entry["itemCount"] = len(new_items)
+            entry["itemCount"] = len(added_items) + len(merged_items)
             entry["error"] = ""
             break
-    state.setdefault("items", []).extend(new_items)
     _save_state(state)
-    state_items = state.get("items", [])
     return {
-        "transcript": _compact_transcript(transcript | {"status": "complete", "itemCount": len(new_items)}, state_items),
-        "items": [_compact_item(item) for item in new_items],
+        "transcript": _compact_transcript(transcript | {"status": "complete", "itemCount": len(added_items) + len(merged_items)}, state_items),
+        "items": [_compact_item(item) for item in added_items + merged_items],
+        "addedItemCount": len(added_items),
+        "mergedItemCount": len(merged_items),
         "allItems": [_compact_item(item) for item in state_items],
         "allTranscripts": [_compact_transcript(entry, state_items) for entry in state.get("transcripts", [])],
         "updatedAt": state["updatedAt"],
@@ -1263,17 +1414,19 @@ async def retry_transcript_analysis(transcript_id: str) -> dict[str, Any]:
         ACTIVE_ANALYSES.discard(transcript_id)
 
     state = _load_state()
+    state_items = state.setdefault("items", [])
+    added_items, merged_items = _merge_new_items(state_items, new_items)
     for entry in state.get("transcripts", []):
         if str(entry.get("id")) == transcript_id:
             entry["status"] = "complete"
-            entry["itemCount"] = len(new_items)
+            entry["itemCount"] = len(added_items) + len(merged_items)
             entry["error"] = ""
             break
-    state.setdefault("items", []).extend(new_items)
     _save_state(state)
-    state_items = state.get("items", [])
     return {
-        "items": [_compact_item(item) for item in new_items],
+        "items": [_compact_item(item) for item in added_items + merged_items],
+        "addedItemCount": len(added_items),
+        "mergedItemCount": len(merged_items),
         "allItems": [_compact_item(item) for item in state_items],
         "allTranscripts": [_compact_transcript(entry, state_items) for entry in state.get("transcripts", [])],
         "updatedAt": state["updatedAt"],
