@@ -12,6 +12,102 @@ const categoryFilterButtons = [...document.querySelectorAll("[data-category-filt
 
 const saveTimers = new Map();
 const CATEGORIES = ["paper", "prototype", "phd"];
+const PHD_KEYWORDS = ["phd", "ph.d", "proposal", "dissertation", "thesis", "committee", "defense", "qualifying"];
+const PAPER_ARTIFACT_KEYWORDS = [
+  "manuscript",
+  "abstract",
+  "caption",
+  "citation",
+  "reference",
+  "references",
+  "submission",
+  "journal",
+  "reviewer",
+  "figure",
+  "results",
+  "discussion",
+  "methods",
+  "section",
+  "latex",
+  "overleaf",
+  "pdf",
+  "chi",
+  "picture",
+  "pictures",
+  "photo",
+  "photos",
+  "image",
+  "images",
+  "cartoon",
+  "diagram",
+  "drawing",
+  "illustration",
+  "visual",
+];
+const PAPER_HARD_OVERRIDE_KEYWORDS = [
+  "manuscript",
+  "abstract",
+  "caption",
+  "citation",
+  "reference",
+  "references",
+  "journal",
+  "reviewer",
+  "figure",
+  "latex",
+  "overleaf",
+  "pdf",
+  "chi",
+  "picture",
+  "pictures",
+  "photo",
+  "photos",
+  "image",
+  "images",
+  "cartoon",
+  "diagram",
+  "drawing",
+  "illustration",
+  "visual",
+];
+const PAPER_ACTION_KEYWORDS = [
+  "add",
+  "check",
+  "describe",
+  "draw",
+  "edit",
+  "explain",
+  "include",
+  "insert",
+  "make",
+  "revise",
+  "review",
+  "show",
+  "submit",
+  "update",
+  "write",
+];
+const PROTOTYPE_KEYWORDS = [
+  "prototype",
+  "build",
+  "valve",
+  "epm",
+  "magnet",
+  "magnetic",
+  "manifold",
+  "hardware",
+  "cad",
+  "fabricat",
+  "print",
+  "assembly",
+  "actuator",
+  "mechanism",
+  "test",
+  "measurement",
+  "experiment",
+  "comsol",
+  "simulation",
+];
 
 let items = [];
 let transcripts = [];
@@ -61,7 +157,35 @@ function isDone(item) {
   return safeText(item.state) === "done";
 }
 
+function includesAny(text, keywords) {
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
+function inferredCategory(item) {
+  const taskText = safeText(item.task).toLowerCase();
+  const evidenceText = Array.isArray(item.evidence) ? item.evidence.map(safeText).join(" ") : "";
+  const text = [
+    taskText,
+    safeText(item.details),
+    safeText(item.why),
+    safeText(item.quote),
+    evidenceText,
+  ].join(" ").toLowerCase();
+  const hasPhd = includesAny(text, PHD_KEYWORDS);
+  const taskIsPhdAdmin = includesAny(taskText, PHD_KEYWORDS);
+  const hasPaperArtifact = includesAny(text, PAPER_ARTIFACT_KEYWORDS);
+  const hasPaperHardOverride = includesAny(text, PAPER_HARD_OVERRIDE_KEYWORDS);
+  const hasPaperNamed = text.includes("paper") || text.includes("manuscript");
+  const hasPaperAction = includesAny(text, PAPER_ACTION_KEYWORDS);
+  if ((hasPaperArtifact && !taskIsPhdAdmin) || hasPaperHardOverride || (hasPaperNamed && hasPaperAction && !taskIsPhdAdmin)) return "paper";
+  if (includesAny(text, PROTOTYPE_KEYWORDS)) return "prototype";
+  if (hasPhd) return "phd";
+  return "";
+}
+
 function itemCategory(item) {
+  const inferred = inferredCategory(item);
+  if (inferred) return inferred;
   const category = safeText(item.category).trim().toLowerCase();
   return CATEGORIES.includes(category) ? category : "phd";
 }

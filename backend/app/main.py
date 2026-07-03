@@ -191,76 +191,154 @@ def _quote_verified(transcript: str, quote: str) -> bool:
 
 
 TODO_CATEGORIES = {"paper", "prototype", "phd"}
+PHD_KEYWORDS = ("phd", "ph.d", "proposal", "dissertation", "thesis", "committee", "defense", "qualifying")
+PAPER_ARTIFACT_KEYWORDS = (
+    "manuscript",
+    "abstract",
+    "caption",
+    "citation",
+    "reference",
+    "references",
+    "submission",
+    "journal",
+    "reviewer",
+    "figure",
+    "results",
+    "discussion",
+    "methods",
+    "section",
+    "latex",
+    "overleaf",
+    "pdf",
+    "chi",
+    "picture",
+    "pictures",
+    "photo",
+    "photos",
+    "image",
+    "images",
+    "cartoon",
+    "diagram",
+    "drawing",
+    "illustration",
+    "visual",
+)
+PAPER_HARD_OVERRIDE_KEYWORDS = (
+    "manuscript",
+    "abstract",
+    "caption",
+    "citation",
+    "reference",
+    "references",
+    "journal",
+    "reviewer",
+    "figure",
+    "latex",
+    "overleaf",
+    "pdf",
+    "chi",
+    "picture",
+    "pictures",
+    "photo",
+    "photos",
+    "image",
+    "images",
+    "cartoon",
+    "diagram",
+    "drawing",
+    "illustration",
+    "visual",
+)
+PAPER_ACTION_KEYWORDS = (
+    "add",
+    "check",
+    "describe",
+    "draw",
+    "edit",
+    "explain",
+    "include",
+    "insert",
+    "make",
+    "revise",
+    "review",
+    "show",
+    "submit",
+    "update",
+    "write",
+)
+PROTOTYPE_KEYWORDS = (
+    "prototype",
+    "build",
+    "valve",
+    "epm",
+    "magnet",
+    "magnetic",
+    "manifold",
+    "hardware",
+    "cad",
+    "fabricat",
+    "print",
+    "assembly",
+    "actuator",
+    "mechanism",
+    "test",
+    "measurement",
+    "experiment",
+    "comsol",
+    "simulation",
+)
 
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
     return any(keyword in text for keyword in keywords)
 
 
-def _todo_category(item: dict[str, Any]) -> str:
-    explicit = _safe_text(item.get("category"), 40).strip().lower()
-    if explicit in TODO_CATEGORIES:
-        return explicit
+def _category_text(item: dict[str, Any]) -> tuple[str, str]:
     evidence = item.get("evidence")
     if not isinstance(evidence, list):
         evidence = []
-    text = " ".join(
+    task_text = _safe_text(item.get("task"), 800).lower()
+    full_text = " ".join(
         [
-            _safe_text(item.get("task"), 800),
+            task_text,
             _safe_text(item.get("details"), 2000),
             _safe_text(item.get("why"), 800),
+            _safe_text(item.get("quote"), 800),
             " ".join(_safe_text(entry, 500) for entry in evidence if isinstance(entry, str)),
         ]
     ).lower()
-    if _contains_any(text, ("phd", "ph.d", "proposal", "dissertation", "thesis", "committee", "defense", "qualifying")):
-        return "phd"
-    if _contains_any(
-        text,
-        (
-            "paper",
-            "manuscript",
-            "abstract",
-            "caption",
-            "citation",
-            "reference",
-            "submission",
-            "journal",
-            "reviewer",
-            "figure",
-            "results",
-            "discussion",
-            "methods",
-            "section",
-            "latex",
-            "overleaf",
-            "pdf",
-            "chi",
-        ),
-    ):
+    return task_text, full_text
+
+
+def _infer_todo_category(item: dict[str, Any]) -> str | None:
+    task_text, text = _category_text(item)
+    has_phd = _contains_any(text, PHD_KEYWORDS)
+    task_is_phd_admin = _contains_any(task_text, PHD_KEYWORDS)
+    has_paper_artifact = _contains_any(text, PAPER_ARTIFACT_KEYWORDS)
+    has_paper_hard_override = _contains_any(text, PAPER_HARD_OVERRIDE_KEYWORDS)
+    has_paper_action = _contains_any(text, PAPER_ACTION_KEYWORDS)
+    has_paper_named = "paper" in text or "manuscript" in text
+    has_paper_work = (has_paper_artifact and not task_is_phd_admin) or has_paper_hard_override or (
+        has_paper_named and has_paper_action and not task_is_phd_admin
+    )
+    has_prototype_work = _contains_any(text, PROTOTYPE_KEYWORDS)
+
+    if has_paper_work:
         return "paper"
-    if _contains_any(
-        text,
-        (
-            "prototype",
-            "build",
-            "valve",
-            "epm",
-            "magnet",
-            "magnetic",
-            "manifold",
-            "hardware",
-            "cad",
-            "fabricat",
-            "print",
-            "assembly",
-            "actuator",
-            "mechanism",
-            "test",
-            "measurement",
-            "experiment",
-        ),
-    ):
+    if has_prototype_work:
         return "prototype"
+    if has_phd:
+        return "phd"
+    return None
+
+
+def _todo_category(item: dict[str, Any]) -> str:
+    inferred = _infer_todo_category(item)
+    if inferred:
+        return inferred
+    explicit = _safe_text(item.get("category"), 40).strip().lower()
+    if explicit in TODO_CATEGORIES:
+        return explicit
     return "phd"
 
 
@@ -869,7 +947,7 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                 "Use the speaker names in the transcript when they matter. sourceSpeaker should be the person who assigned, requested, volunteered, or clarified the action. Leave it blank only when the transcript has no speaker names.",
                 "task is the thing to be done, written as a direct concrete action. Do not start the task with a speaker name; the speaker belongs in sourceSpeaker and the quote display.",
                 "details must include specific context: who said what, what was decided, and what source condition matters.",
-                "category must be exactly one of paper, prototype, or phd. Use paper for manuscript, CHI, PDF, figure, caption, citation, abstract, submission, and advisor-comment writing/revision work. Use prototype for physical build, valve, magnet, EPM, manifold, CAD, fabrication, hardware, experiment, measurement, actuation, and mechanism tasks. Use phd for proposal, dissertation, thesis, committee, defense, qualifying exam, degree-planning, or PhD program/admin work that is not primarily a paper edit or prototype/build task.",
+                "category must be exactly one of paper, prototype, or phd. Use paper for manuscript, CHI, PDF, figure, caption, citation, abstract, submission, advisor-comment writing/revision, and explanatory paper visuals such as pictures, photos, cartoons, diagrams, illustrations, or transition drawings. Paper beats phd when the concrete task changes or checks a manuscript/figure/visual artifact, even if the broader meeting is dissertation/PhD related. Use prototype for physical build, valve, magnet, EPM, manifold, CAD, fabrication, hardware, experiment, measurement, COMSOL/simulation, actuation, and mechanism tasks. Use phd only for proposal, dissertation, thesis, committee, defense, qualifying exam, degree-planning, or PhD program/admin work that is not primarily a paper artifact or prototype/build task.",
                 "timeEstimate is a practical estimate such as 10 min, 30 min, 2 hr, half day, 1 day, or unknown.",
                 "easeScore is 0-100 for how easy this is to finish quickly. Very easy immediate tasks should score high. Long, ambiguous, blocked, or emotionally heavy tasks should score lower.",
                 "disneyScore is 0-100 for future-goal value, named after Alan's Disney/Imagineering goal but broader than literal Disney wording. Treat paper progress, research progress, mechanism/simulator progress, portfolio evidence, career positioning, life stability, goals, dreams, and current physical-system work as direct Disney-score evidence when the transcript supports that lane. Do not require the word Disney to appear for a paper or research task to score high. Do not give a negligible Disney score to paper, PDF, citation, figure, or research-support work merely because it is editing or checking; score minor polish moderate, claim/evidence/career-facing work high, and direct portfolio/research breakthroughs highest.",
