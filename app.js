@@ -351,7 +351,7 @@ function tokenOverlap(left, right) {
   return shared / smaller;
 }
 
-function detailsReplaceRepeatedTask(task, details) {
+function startsWithRepeatedAction(left, right) {
   const actionVerbs = new Set([
     "add",
     "check",
@@ -364,10 +364,29 @@ function detailsReplaceRepeatedTask(task, details) {
     "update",
     "write",
   ]);
-  const taskWord = firstWord(task);
-  if (!taskWord || taskWord !== firstWord(details) || !actionVerbs.has(taskWord)) return false;
+  const leftWord = firstWord(left);
+  return leftWord && leftWord === firstWord(right) && actionVerbs.has(leftWord) && tokenOverlap(left, right) >= 0.3;
+}
+
+function detailsReplaceRepeatedTask(task, details) {
   if (safeText(details).length < 45) return false;
-  return tokenOverlap(task, details) >= 0.3;
+  return startsWithRepeatedAction(task, details);
+}
+
+function splitSentences(value) {
+  return safeText(value)
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function removeRepeatedActionSentences(task, details) {
+  const sentences = splitSentences(details);
+  if (sentences.length < 2) return details;
+  const filtered = sentences.filter((sentence) => !startsWithRepeatedAction(task, sentence));
+  return filtered.length && filtered.length !== sentences.length ? filtered.join(" ") : details;
 }
 
 function polishedParts(parts) {
@@ -385,8 +404,8 @@ function polishedParts(parts) {
 }
 
 function fixBody(item) {
-  const parts =
-    detailsReplaceRepeatedTask(item.task, item.details) ? [item.details, item.why] : [item.task, item.details, item.why];
+  const details = removeRepeatedActionSentences(item.task, item.details);
+  const parts = detailsReplaceRepeatedTask(item.task, details) ? [details, item.why] : [item.task, details, item.why];
   return polishedParts(parts);
 }
 
