@@ -157,7 +157,18 @@ function setStatus(text, tone = "") {
 }
 
 function safeText(value) {
-  return value == null ? "" : String(value);
+  return value == null ? "" : repairDisplayText(String(value));
+}
+
+function repairDisplayText(value) {
+  return value
+    .replace(/\u00e2\u0080\u0099/g, "'")
+    .replace(/\u00e2\u0080\u0098/g, "'")
+    .replace(/\u00e2\u0080\u009c/g, '"')
+    .replace(/\u00e2\u0080\u009d/g, '"')
+    .replace(/\u00e2\u0080\u00a6/g, "...")
+    .replace(/\u00c2\u00b0/g, " degrees")
+    .replace(/\ufffd/g, "'");
 }
 
 function scoreValue(value) {
@@ -285,8 +296,28 @@ function compactParts(parts) {
     .trim();
 }
 
+function sentencePart(value) {
+  const text = safeText(value).replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  return /[.!?](?:["')\]]*)$/.test(text) ? text : `${text}.`;
+}
+
+function polishedParts(parts) {
+  const seen = new Set();
+  const output = [];
+  parts.forEach((part) => {
+    const sentence = sentencePart(part);
+    if (!sentence) return;
+    const key = sentence.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    output.push(sentence);
+  });
+  return output.join(" ");
+}
+
 function fixBody(item) {
-  return compactParts([item.task, item.details, item.why]);
+  return polishedParts([item.task, item.details, item.why]);
 }
 
 function splitFixBody(value) {
