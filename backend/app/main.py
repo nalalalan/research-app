@@ -839,6 +839,18 @@ def _candidate_text(candidate: dict[str, Any]) -> str:
     )
 
 
+def _normalized_evidence(candidate: dict[str, Any]) -> set[str]:
+    evidence = candidate.get("evidence")
+    if not isinstance(evidence, list):
+        return set()
+    values: set[str] = set()
+    for entry in evidence:
+        text = re.sub(r"[^a-z0-9]+", " ", _safe_text(entry, 500).lower()).strip()
+        if len(text) >= 24:
+            values.add(text)
+    return values
+
+
 def _candidate_key(candidate: dict[str, Any]) -> str:
     category = _todo_category(candidate)
     tokens = sorted(_todo_tokens(_candidate_text(candidate)))
@@ -861,6 +873,8 @@ def _same_todo(left: dict[str, Any], right: dict[str, Any]) -> bool:
     if not left_tokens or not right_tokens:
         return False
     overlap = left_tokens & right_tokens
+    if len(overlap) >= 2 and (_normalized_evidence(left) & _normalized_evidence(right)):
+        return True
     smaller = min(len(left_tokens), len(right_tokens))
     union = len(left_tokens | right_tokens)
     return len(overlap) >= 4 and (len(overlap) / smaller >= 0.58 or len(overlap) / union >= 0.42)
@@ -1131,7 +1145,8 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                 "Dependent follow-up checks still count as todo rows when someone offers or requests them, such as checking a PDF after an edit, verifying a figure after export, or reviewing a citation after insertion. Mark the dependency in details instead of dropping the row.",
                 "Use the speaker names in the transcript when they matter. sourceSpeaker should be the person who assigned, requested, volunteered, or clarified the action. Leave it blank only when the transcript has no speaker names.",
                 "task is the thing to be done, written as a direct concrete action. Do not start the task with a speaker name; the speaker belongs in sourceSpeaker and the quote display.",
-                "details must include specific context: who said what, what was decided, and what source condition matters.",
+                "details must include specific context: who said what, what was decided, what source condition matters, and what finished state Alan should see. Do not leave high-ease tasks as thin one-sentence summaries.",
+                "For any task with easeScore 85 or higher, details must be especially concrete: name the exact figure/section/video/plot/object when available, the smallest edit or check to perform, the visible correction or decision that ends the task, and any dependency or do-not-redo boundary from the transcript. Keep it compact but actionable.",
                 "category must be exactly one of paper, prototype, or phd. Use paper for manuscript, CHI, PDF, figure, caption, citation, abstract, submission, advisor-comment writing/revision, explanatory paper visuals such as pictures/photos/cartoons/diagrams/plots/graphs/charts, and text or plot additions that explain prototype results. Paper beats phd and prototype when the concrete deliverable is paper text, a figure, a plot, a caption, a visual, or an explanation for the manuscript, even if the sentence mentions valves, mechanisms, compression tests, hardware, dissertation, or an advisor meeting. Use prototype only when the concrete task is to build, design, fabricate, simulate, run, measure, test, assemble, or change physical/mechanism/hardware work itself. Use phd only for proposal, dissertation, thesis, committee, defense, qualifying exam, degree-planning, or PhD program/admin work that is not primarily a paper artifact or prototype/build task.",
                 "timeEstimate is a practical estimate such as 10 min, 30 min, 2 hr, half day, 1 day, or unknown.",
                 "easeScore is 0-100 for how easy this is to finish quickly. Very easy immediate tasks should score high. Long, ambiguous, blocked, or emotionally heavy tasks should score lower.",

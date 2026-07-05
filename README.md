@@ -10,6 +10,7 @@ Shape:
 - rows stay editable and reviewable
 - every row has exactly one category: `paper`, `prototype`, or `phd`; paper text/plot/figure/photo/cartoon/diagram tasks stay `paper` even when the meeting context mentions PhD, dissertation, valves, mechanisms, tests, or prototype hardware
 - repeated mentions of the same todo merge into one row with additional details/evidence instead of creating duplicate rows
+- high-ease rows still need enough detail to execute immediately: exact figure/section/video/object when available, the small edit/check, the visible done state, and any do-not-redo boundary from the transcript
 - table filters toggle those categories and filter both active and done rows
 - table columns: todo, ease /100, Disney /100, total
 - table header shows active and done counts as `__ active / __ done`
