@@ -302,6 +302,74 @@ function sentencePart(value) {
   return /[.!?](?:["')\]]*)$/.test(text) ? text : `${text}.`;
 }
 
+function firstWord(value) {
+  return (safeText(value).toLowerCase().match(/[a-z]+/) || [""])[0];
+}
+
+function significantTokens(value) {
+  const stop = new Set([
+    "about",
+    "after",
+    "again",
+    "and",
+    "are",
+    "case",
+    "could",
+    "does",
+    "each",
+    "from",
+    "have",
+    "into",
+    "like",
+    "near",
+    "only",
+    "should",
+    "that",
+    "the",
+    "this",
+    "using",
+    "where",
+    "with",
+  ]);
+  return new Set(
+    safeText(value)
+      .toLowerCase()
+      .match(/[a-z0-9]+/g)
+      ?.filter((token) => token.length > 2 && !stop.has(token)) || [],
+  );
+}
+
+function tokenOverlap(left, right) {
+  const leftTokens = significantTokens(left);
+  const rightTokens = significantTokens(right);
+  const smaller = Math.min(leftTokens.size, rightTokens.size);
+  if (!smaller) return 0;
+  let shared = 0;
+  leftTokens.forEach((token) => {
+    if (rightTokens.has(token)) shared += 1;
+  });
+  return shared / smaller;
+}
+
+function detailsReplaceRepeatedTask(task, details) {
+  const actionVerbs = new Set([
+    "add",
+    "check",
+    "draw",
+    "fix",
+    "make",
+    "replace",
+    "revise",
+    "swap",
+    "update",
+    "write",
+  ]);
+  const taskWord = firstWord(task);
+  if (!taskWord || taskWord !== firstWord(details) || !actionVerbs.has(taskWord)) return false;
+  if (safeText(details).length < 45) return false;
+  return tokenOverlap(task, details) >= 0.3;
+}
+
 function polishedParts(parts) {
   const seen = new Set();
   const output = [];
@@ -317,7 +385,9 @@ function polishedParts(parts) {
 }
 
 function fixBody(item) {
-  return polishedParts([item.task, item.details, item.why]);
+  const parts =
+    detailsReplaceRepeatedTask(item.task, item.details) ? [item.details, item.why] : [item.task, item.details, item.why];
+  return polishedParts(parts);
 }
 
 function splitFixBody(value) {
