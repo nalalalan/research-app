@@ -318,6 +318,35 @@ PROTOTYPE_KEYWORDS = (
     "comsol",
     "simulation",
 )
+PROTOTYPE_TASK_OVERRIDE_KEYWORDS = (
+    "activation pattern",
+    "activation-pattern",
+    "comsol",
+    "inverse shape",
+    "inverse-shape",
+    "optimization",
+    "parameter search",
+    "parameter-search",
+    "produce and test",
+    "simulation",
+    "simulator",
+    "tool",
+    "valve design",
+)
+PAPER_TASK_DELIVERABLE_KEYWORDS = (
+    "abstract",
+    "caption",
+    "citation",
+    "figure",
+    "graph",
+    "manuscript",
+    "paper draft",
+    "pdf",
+    "plot",
+    "section",
+    "submission",
+    "text",
+)
 
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
@@ -354,11 +383,15 @@ def _infer_todo_category(item: dict[str, Any]) -> str | None:
     has_paper_action = _contains_any(text, PAPER_ACTION_KEYWORDS)
     has_paper_named = "paper" in text or "manuscript" in text
     task_is_paper_output = _contains_action_and_output(task_text)
+    task_is_paper_deliverable = task_is_paper_output or _contains_any(task_text, PAPER_TASK_DELIVERABLE_KEYWORDS)
+    task_is_prototype_override = _contains_any(task_text, PROTOTYPE_TASK_OVERRIDE_KEYWORDS)
     has_paper_work = (has_paper_artifact and not task_is_phd_admin) or has_paper_hard_override or (
         has_paper_named and has_paper_action and not task_is_phd_admin
     ) or task_is_paper_output
     has_prototype_work = _contains_any(text, PROTOTYPE_KEYWORDS)
 
+    if task_is_prototype_override and not task_is_paper_deliverable:
+        return "prototype"
     if has_paper_work:
         return "paper"
     if has_prototype_work:
@@ -1147,7 +1180,7 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                 "task is the thing to be done, written as a direct concrete action. Do not start the task with a speaker name; the speaker belongs in sourceSpeaker and the quote display.",
                 "details must include specific context: who said what, what was decided, what source condition matters, and what finished state Alan should see. Write polished sentences with normal punctuation; do not paste fragments together, repeat the task in slightly different words, start details with the same generic action opener as task, or leave high-ease tasks as thin one-sentence summaries.",
                 "For any task with easeScore 85 or higher, details must be especially concrete: name the exact figure/section/video/plot/object when available, the smallest edit or check to perform, the visible correction or decision that ends the task, and any dependency or do-not-redo boundary from the transcript. Keep it compact but actionable.",
-                "category must be exactly one of paper, prototype, or phd. Use paper for manuscript, CHI, PDF, figure, caption, citation, abstract, submission, advisor-comment writing/revision, explanatory paper visuals such as pictures/photos/cartoons/diagrams/plots/graphs/charts, and text or plot additions that explain prototype results. Paper beats phd and prototype when the concrete deliverable is paper text, a figure, a plot, a caption, a visual, or an explanation for the manuscript, even if the sentence mentions valves, mechanisms, compression tests, hardware, dissertation, or an advisor meeting. Use prototype only when the concrete task is to build, design, fabricate, simulate, run, measure, test, assemble, or change physical/mechanism/hardware work itself. Use phd only for proposal, dissertation, thesis, committee, defense, qualifying exam, degree-planning, or PhD program/admin work that is not primarily a paper artifact or prototype/build task.",
+                "category must be exactly one of paper, prototype, or phd. Use paper only when the concrete deliverable is a manuscript/paper artifact: paper text, CHI/submission package, PDF, figure, caption, citation, abstract, advisor-comment writing/revision, explanatory paper visual, picture/photo/cartoon/diagram/plot/graph/chart, or a plot/text addition whose immediate output is the paper itself. Use prototype when the concrete work is simulation, COMSOL validation, parameter search, optimization, inverse-shape planning, activation-pattern search, tool coding, build/design/fabrication, produce-and-test work, measurement, hardware/mechanism testing, or changing physical/simulator/prototype behavior. Prototype beats paper when the work generates or validates evidence for a future paper but the immediate task is still simulation/tool/COMSOL/search/build/test work, even if the transcript says paper, publication, publication-grade, or part of the paper. Use phd only for proposal, dissertation, thesis, committee, defense, qualifying exam, degree-planning, or PhD program/admin work that is not primarily a paper artifact or prototype/build task.",
                 "timeEstimate is a practical estimate such as 10 min, 30 min, 2 hr, half day, 1 day, or unknown.",
                 "easeScore is 0-100 for how easy this is to finish quickly. Very easy immediate tasks should score high. Long, ambiguous, blocked, or emotionally heavy tasks should score lower.",
                 "disneyScore is 0-100 for future-goal value, named after Alan's Disney/Imagineering goal but broader than literal Disney wording. Treat paper progress, research progress, mechanism/simulator progress, portfolio evidence, career positioning, life stability, goals, dreams, and current physical-system work as direct Disney-score evidence when the transcript supports that lane. Do not require the word Disney to appear for a paper or research task to score high. Do not give a negligible Disney score to paper, PDF, citation, figure, or research-support work merely because it is editing or checking; score minor polish moderate, claim/evidence/career-facing work high, and direct portfolio/research breakthroughs highest.",

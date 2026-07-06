@@ -8,7 +8,7 @@ Shape:
 - AI infers the transcript title/date-time from the transcript text
 - AI extracts only transcript-supported todo rows; rows are added automatically after analysis
 - rows stay editable and reviewable
-- every row has exactly one category: `paper`, `prototype`, or `phd`; paper text/plot/figure/photo/cartoon/diagram tasks stay `paper` even when the meeting context mentions PhD, dissertation, valves, mechanisms, tests, or prototype hardware
+- every row has exactly one category: `paper`, `prototype`, or `phd`; paper text/plot/figure/photo/cartoon/diagram tasks stay `paper` when the immediate deliverable is the manuscript artifact, but COMSOL validation, simulation/tool work, parameter searches, inverse-shape planning, activation-pattern searches, build/design/fabrication, and produce-and-test work stay `prototype` even when the transcript says paper, publication, or publication-grade
 - repeated mentions of the same todo merge into one row with additional details/evidence instead of creating duplicate rows
 - high-ease rows still need enough detail to execute immediately: exact figure/section/video/object when available, the small edit/check, the visible done state, and any do-not-redo boundary from the transcript
 - the todo text must render as polished sentences with punctuation between task, context, and score rationale; rows must not read like randomly appended fragments or repeated same-action openers

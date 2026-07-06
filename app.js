@@ -140,6 +140,35 @@ const PROTOTYPE_KEYWORDS = [
   "comsol",
   "simulation",
 ];
+const PROTOTYPE_TASK_OVERRIDE_KEYWORDS = [
+  "activation pattern",
+  "activation-pattern",
+  "comsol",
+  "inverse shape",
+  "inverse-shape",
+  "optimization",
+  "parameter search",
+  "parameter-search",
+  "produce and test",
+  "simulation",
+  "simulator",
+  "tool",
+  "valve design",
+];
+const PAPER_TASK_DELIVERABLE_KEYWORDS = [
+  "abstract",
+  "caption",
+  "citation",
+  "figure",
+  "graph",
+  "manuscript",
+  "paper draft",
+  "pdf",
+  "plot",
+  "section",
+  "submission",
+  "text",
+];
 
 let items = [];
 let transcripts = [];
@@ -225,6 +254,9 @@ function inferredCategory(item) {
   const hasPaperNamed = text.includes("paper") || text.includes("manuscript");
   const hasPaperAction = includesAny(text, PAPER_ACTION_KEYWORDS);
   const taskIsPaperOutput = includesActionAndOutput(taskText);
+  const taskIsPaperDeliverable = taskIsPaperOutput || includesAny(taskText, PAPER_TASK_DELIVERABLE_KEYWORDS);
+  const taskIsPrototypeOverride = includesAny(taskText, PROTOTYPE_TASK_OVERRIDE_KEYWORDS);
+  if (taskIsPrototypeOverride && !taskIsPaperDeliverable) return "prototype";
   if ((hasPaperArtifact && !taskIsPhdAdmin) || hasPaperHardOverride || (hasPaperNamed && hasPaperAction && !taskIsPhdAdmin) || taskIsPaperOutput) return "paper";
   if (includesAny(text, PROTOTYPE_KEYWORDS)) return "prototype";
   if (hasPhd) return "phd";
