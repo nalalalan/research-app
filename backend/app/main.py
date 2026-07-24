@@ -190,7 +190,7 @@ def _quote_verified(transcript: str, quote: str) -> bool:
     return normalized_quote in _normalize_for_match(transcript)
 
 
-TODO_CATEGORIES = {"paper", "prototype", "phd"}
+TODO_CATEGORIES = {"paper", "prototype", "phd", "life"}
 PHD_KEYWORDS = ("phd", "ph.d", "proposal", "dissertation", "thesis", "committee", "defense", "qualifying")
 PAPER_ARTIFACT_KEYWORDS = (
     "manuscript",
@@ -402,13 +402,77 @@ def _infer_todo_category(item: dict[str, Any]) -> str | None:
 
 
 def _todo_category(item: dict[str, Any]) -> str:
+    explicit = _safe_text(item.get("category"), 40).strip().lower()
+    if explicit == "life":
+        return "life"
     inferred = _infer_todo_category(item)
     if inferred:
         return inferred
-    explicit = _safe_text(item.get("category"), 40).strip().lower()
     if explicit in TODO_CATEGORIES:
         return explicit
-    return "phd"
+    return "life"
+
+
+NOTE_PREFIX_RE = re.compile(r"^\s*(?:[-*]|\d+[.)]|\[[ xX]\])\s+")
+SPEAKER_LINE_RE = re.compile(r"(?m)^\s*[A-Z][A-Za-z .()'\-]{1,60}\s*:\s+\S")
+
+
+def _clean_life_note(value: str) -> str:
+    text = NOTE_PREFIX_RE.sub("", _safe_text(value, 280)).strip()
+    text = re.sub(r"\s+", " ", text)
+    if not text:
+        return ""
+    return text[:1].upper() + text[1:]
+
+
+def _looks_like_transcript(text: str) -> bool:
+    stripped = _safe_text(text, MAX_TRANSCRIPT_CHARS + 1)
+    if len(stripped) > 1200:
+        return True
+    speaker_lines = SPEAKER_LINE_RE.findall(stripped)
+    if len(speaker_lines) >= 2:
+        return True
+    if len(speaker_lines) == 1 and (len(stripped) > 60 or re.match(r"^\s*(prof|dr|alan|speaker)\b", stripped, re.IGNORECASE)):
+        return True
+    return False
+
+
+def _plain_life_note_lines(text: str) -> list[str]:
+    stripped = _safe_text(text, 2500)
+    if not stripped or _looks_like_transcript(stripped):
+        return []
+    lines = [_clean_life_note(line) for line in stripped.replace("\r\n", "\n").split("\n")]
+    lines = [line for line in lines if line]
+    if not lines or len(lines) > 20:
+        return []
+    if len(lines) == 1:
+        return lines if len(lines[0]) <= 260 else []
+    if any(len(line) > 220 or SPEAKER_LINE_RE.match(line) for line in lines):
+        return []
+    return lines
+
+
+def _manual_life_item(note: str) -> dict[str, Any]:
+    now = _now()
+    ease = 90 if len(note) <= 80 else 82 if len(note) <= 160 else 70
+    return {
+        "id": secrets.token_hex(8),
+        "task": note,
+        "details": "",
+        "category": "life",
+        "dateAdded": _today(),
+        "timeEstimate": "unknown",
+        "easeScore": ease,
+        "disneyScore": 25,
+        "why": "",
+        "sourceTranscriptId": "",
+        "sourceSpeaker": "",
+        "evidence": [],
+        "confidence": "manual",
+        "state": "active",
+        "createdAt": now,
+        "updatedAt": now,
+    }
 
 
 def _compact_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -895,6 +959,10 @@ def _same_todo(left: dict[str, Any], right: dict[str, Any]) -> bool:
     right_category = _todo_category(right)
     if left_category != right_category:
         return False
+    if left_category == "life":
+        left_task = _normalize_for_match(_safe_text(left.get("task"), 800))
+        right_task = _normalize_for_match(_safe_text(right.get("task"), 800))
+        return bool(left_task and left_task == right_task)
     left_text = _candidate_text(left)
     right_text = _candidate_text(right)
     left_figures = _figure_numbers(left_text)
@@ -1137,7 +1205,7 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                     "properties": {
                         "task": {"type": "string"},
                         "details": {"type": "string"},
-                        "category": {"type": "string", "enum": ["paper", "prototype", "phd"]},
+                        "category": {"type": "string", "enum": ["paper", "prototype", "phd", "life"]},
                         "sourceSpeaker": {"type": "string"},
                         "timeEstimate": {"type": "string"},
                         "easeScore": {"type": "integer", "minimum": 0, "maximum": 100},
@@ -1180,7 +1248,7 @@ async def _analyze_chunk(transcript_name: str, chunk: str, chunk_index: int, chu
                 "task is the thing to be done, written as a direct concrete action. Do not start the task with a speaker name; the speaker belongs in sourceSpeaker and the quote display.",
                 "details must include specific context: who said what, what was decided, what source condition matters, and what finished state Alan should see. Write polished sentences with normal punctuation; do not paste fragments together, repeat the task in slightly different words, start details with the same generic action opener as task, or leave high-ease tasks as thin one-sentence summaries.",
                 "For any task with easeScore 85 or higher, details must be especially concrete: name the exact figure/section/video/plot/object when available, the smallest edit or check to perform, the visible correction or decision that ends the task, and any dependency or do-not-redo boundary from the transcript. Keep it compact but actionable.",
-                "category must be exactly one of paper, prototype, or phd. Use paper only when the concrete deliverable is a manuscript/paper artifact: paper text, CHI/submission package, PDF, figure, caption, citation, abstract, advisor-comment writing/revision, explanatory paper visual, picture/photo/cartoon/diagram/plot/graph/chart, or a plot/text addition whose immediate output is the paper itself. Use prototype when the concrete work is simulation, COMSOL validation, parameter search, optimization, inverse-shape planning, activation-pattern search, tool coding, build/design/fabrication, produce-and-test work, measurement, hardware/mechanism testing, or changing physical/simulator/prototype behavior. Prototype beats paper when the work generates or validates evidence for a future paper but the immediate task is still simulation/tool/COMSOL/search/build/test work, even if the transcript says paper, publication, publication-grade, or part of the paper. Use phd only for proposal, dissertation, thesis, committee, defense, qualifying exam, degree-planning, or PhD program/admin work that is not primarily a paper artifact or prototype/build task.",
+                "category must be exactly one of paper, prototype, phd, or life. Use paper only when the concrete deliverable is a manuscript/paper artifact: paper text, CHI/submission package, PDF, figure, caption, citation, abstract, advisor-comment writing/revision, explanatory paper visual, picture/photo/cartoon/diagram/plot/graph/chart, or a plot/text addition whose immediate output is the paper itself. Use prototype when the concrete work is simulation, COMSOL validation, parameter search, optimization, inverse-shape planning, activation-pattern search, tool coding, build/design/fabrication, produce-and-test work, measurement, hardware/mechanism testing, or changing physical/simulator/prototype behavior. Prototype beats paper when the work generates or validates evidence for a future paper but the immediate task is still simulation/tool/COMSOL/search/build/test work, even if the transcript says paper, publication, publication-grade, or part of the paper. Use phd only for proposal, dissertation, thesis, committee, defense, qualifying exam, degree-planning, or PhD program/admin work that is not primarily a paper artifact or prototype/build task. Use life only for personal note-to-self errands, home/life admin, returns, pickups, purchases, scheduling, or maintenance tasks that are not paper, prototype, or PhD-program work.",
                 "timeEstimate is a practical estimate such as 10 min, 30 min, 2 hr, half day, 1 day, or unknown.",
                 "easeScore is 0-100 for how easy this is to finish quickly. Very easy immediate tasks should score high. Long, ambiguous, blocked, or emotionally heavy tasks should score lower.",
                 "disneyScore is 0-100 for future-goal value, named after Alan's Disney/Imagineering goal but broader than literal Disney wording. Treat paper progress, research progress, mechanism/simulator progress, portfolio evidence, career positioning, life stability, goals, dreams, and current physical-system work as direct Disney-score evidence when the transcript supports that lane. Do not require the word Disney to appear for a paper or research task to score high. Do not give a negligible Disney score to paper, PDF, citation, figure, or research-support work merely because it is editing or checking; score minor polish moderate, claim/evidence/career-facing work high, and direct portfolio/research breakthroughs highest.",
@@ -1357,6 +1425,22 @@ async def analyze_transcript(body: AnalyzeTranscriptBody) -> dict[str, Any]:
     transcript_text = body.transcript.strip()
     if len(transcript_text) > MAX_TRANSCRIPT_CHARS:
         raise HTTPException(status_code=413, detail=f"Transcript limit is {MAX_TRANSCRIPT_CHARS} characters")
+    life_notes = _plain_life_note_lines(transcript_text)
+    if life_notes:
+        state = _load_state()
+        state_items = state.setdefault("items", [])
+        new_items = [_manual_life_item(note) for note in life_notes]
+        added_items, merged_items = _merge_new_items(state_items, new_items)
+        _save_state(state)
+        return {
+            "noteMode": True,
+            "items": [_compact_item(item) for item in added_items + merged_items],
+            "addedItemCount": len(added_items),
+            "mergedItemCount": len(merged_items),
+            "allItems": [_compact_item(item) for item in state_items],
+            "allTranscripts": [_compact_transcript(entry, state_items) for entry in state.get("transcripts", [])],
+            "updatedAt": state["updatedAt"],
+        }
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=503, detail="AI analysis is not configured")
 

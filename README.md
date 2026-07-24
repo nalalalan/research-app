@@ -4,11 +4,12 @@ Meeting-transcript todo extractor.
 
 Shape:
 
-- paste a long meeting transcript
+- paste a long meeting transcript or a short note-to-self such as `return camera`
 - AI infers the transcript title/date-time from the transcript text
 - AI extracts only transcript-supported todo rows; rows are added automatically after analysis
+- short non-transcript notes create `life` rows directly and do not create transcription cards
 - rows stay editable and reviewable
-- every row has exactly one category: `paper`, `prototype`, or `phd`; paper text/plot/figure/photo/cartoon/diagram tasks stay `paper` when the immediate deliverable is the manuscript artifact, but COMSOL validation, simulation/tool work, parameter searches, inverse-shape planning, activation-pattern searches, build/design/fabrication, and produce-and-test work stay `prototype` even when the transcript says paper, publication, or publication-grade
+- every row has exactly one category: `paper`, `prototype`, `phd`, or `life`; paper text/plot/figure/photo/cartoon/diagram tasks stay `paper` when the immediate deliverable is the manuscript artifact, but COMSOL validation, simulation/tool work, parameter searches, inverse-shape planning, activation-pattern searches, build/design/fabrication, and produce-and-test work stay `prototype` even when the transcript says paper, publication, or publication-grade; `life` is only for personal note-to-self errands or life admin that is not paper, prototype, or PhD-program work
 - repeated mentions of the same todo merge into one row with additional details/evidence instead of creating duplicate rows
 - high-ease rows still need enough detail to execute immediately: exact figure/section/video/object when available, the small edit/check, the visible done state, and any do-not-redo boundary from the transcript
 - the todo text must render as polished sentences with punctuation between task, context, and score rationale; rows must not read like randomly appended fragments or repeated same-action openers
@@ -39,7 +40,7 @@ Runtime:
 - `GET /` serves the app.
 - `GET /health` and `GET /api/health` expose app/AI readiness without secrets.
 - `GET /api/todo/items` returns rows and transcript summaries with PDF links.
-- `POST /api/todo/transcripts/analyze` stores a transcript and appends AI-extracted rows.
+- `POST /api/todo/transcripts/analyze` stores a transcript and appends AI-extracted rows, or directly adds `life` rows for short non-transcript notes.
 - `POST /api/todo/transcripts/{transcript_id}/retry` retries analysis for a saved failed transcript.
 - `POST /api/todo/transcripts/{transcript_id}/rescore` recalibrates existing row scores against the current scoring rubric.
 - `PATCH /api/todo/items/{item_id}` edits row fields and review state.

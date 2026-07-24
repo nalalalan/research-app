@@ -11,7 +11,7 @@ const sortButtons = [...document.querySelectorAll(".sort-button")];
 const categoryFilterButtons = [...document.querySelectorAll("[data-category-filter]")];
 
 const saveTimers = new Map();
-const CATEGORIES = ["paper", "prototype", "phd"];
+const CATEGORIES = ["paper", "prototype", "phd", "life"];
 const PHD_KEYWORDS = ["phd", "ph.d", "proposal", "dissertation", "thesis", "committee", "defense", "qualifying"];
 const PAPER_ARTIFACT_KEYWORDS = [
   "manuscript",
@@ -264,10 +264,11 @@ function inferredCategory(item) {
 }
 
 function itemCategory(item) {
+  const category = safeText(item.category).trim().toLowerCase();
+  if (category === "life") return "life";
   const inferred = inferredCategory(item);
   if (inferred) return inferred;
-  const category = safeText(item.category).trim().toLowerCase();
-  return CATEGORIES.includes(category) ? category : "phd";
+  return CATEGORIES.includes(category) ? category : "life";
 }
 
 function passesCategoryFilter(item) {
@@ -286,7 +287,7 @@ function analysisResultLabel(payload) {
   if (added) return `added ${todoCountLabel(added)}`;
   if (merged) return `updated ${todoCountLabel(merged)}`;
   const fallback = Math.max(0, Number(payload.items?.length) || 0);
-  return fallback ? `updated ${todoCountLabel(fallback)}` : "saved transcription, no supported todos found";
+  return fallback ? `updated ${todoCountLabel(fallback)}` : payload.noteMode ? "no todo rows added" : "saved transcription, no supported todos found";
 }
 
 function updateTodoCount(activeCount, doneCount) {
@@ -457,6 +458,7 @@ function fixMeta(item) {
 
 function quoteBody(item) {
   const quote = safeText(item.evidence?.length ? item.evidence[0] : "").trim();
+  if (!quote && itemCategory(item) === "life") return "";
   if (!quote) return "no quote saved";
   const speaker = safeText(item.sourceSpeaker).trim();
   if (!speaker) return quote;
@@ -624,15 +626,20 @@ function buildTodoCell(item) {
   if (meta.textContent) fixSection.append(meta);
   fixSection.append(todo);
 
-  const quoteSection = document.createElement("section");
-  quoteSection.className = "todo-section";
+  const quoteText = quoteBody(item);
+  if (quoteText) {
+    const quoteSection = document.createElement("section");
+    quoteSection.className = "todo-section";
 
-  const quote = document.createElement("blockquote");
-  quote.className = "quote-block";
-  quote.textContent = quoteBody(item);
+    const quote = document.createElement("blockquote");
+    quote.className = "quote-block";
+    quote.textContent = quoteText;
 
-  quoteSection.append(quote);
-  sections.append(fixSection, quoteSection);
+    quoteSection.append(quote);
+    sections.append(fixSection, quoteSection);
+  } else {
+    sections.append(fixSection);
+  }
   cell.append(actions, sections);
 
   return cell;
@@ -892,7 +899,7 @@ async function analyzeTranscript() {
   const transcript = transcriptInput.value.trim();
   if (!transcript) {
     transcriptInput.focus();
-    setStatus("paste a transcription", "bad");
+    setStatus("paste a transcription or note", "bad");
     return;
   }
   const beforeItemCount = items.length;

@@ -19,8 +19,8 @@
   </header>
 
   <main class="shell">
-    <section class="intake-shell" aria-label="meeting transcript intake">
-      <textarea id="transcriptInput" class="transcript-input" spellcheck="true" placeholder="paste meeting transcription"></textarea>
+    <section class="intake-shell" aria-label="todo intake">
+      <textarea id="transcriptInput" class="transcript-input" spellcheck="true" placeholder="paste meeting transcription or note"></textarea>
       <div class="intake-foot">
         <span id="intakeStatus">ready</span>
         <button id="analyzeButton" class="primary-button" type="button">analyze</button>
@@ -33,6 +33,7 @@
           <button class="filter-button" type="button" data-category-filter="paper" aria-pressed="false">paper</button>
           <button class="filter-button" type="button" data-category-filter="prototype" aria-pressed="false">prototype</button>
           <button class="filter-button" type="button" data-category-filter="phd" aria-pressed="false">phd</button>
+          <button class="filter-button" type="button" data-category-filter="life" aria-pressed="false">life</button>
         </div>
         <span id="todoCount" class="todo-count">0 todos</span>
       </div>
@@ -96,6 +97,6 @@
     </section>
   </main>
 
-  <script src="/app.js?v=20260706-prototype-category-boundary"></script>
+  <script src="/app.js?v=20260724-life-notes"></script>
 </body>
 </html>
